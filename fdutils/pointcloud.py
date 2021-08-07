@@ -17,8 +17,13 @@ from ctypes import POINTER, c_int, c_double, c_void_p
 
 from firedrake.function import _CFunction
 
-from peval.evalpatch import build_two_sided
-
+try:
+    from .evalpatch import build_two_sided
+except ModuleNotFoundError:
+     raise
+except:
+    print("Unexpected error:", sys.exc_info()[0])
+    raise
 
 __all__ = ["PointCloud"]
 
@@ -480,8 +485,8 @@ def make_c_evaluate(function, c_name="evaluate_points", ldargs=None, tolerance=N
     from firedrake import utils
     import firedrake.pointquery_utils as pq_utils
     
-    from peval.pointeval_utils import compile_element
-    from peval.meshpatch import src_locate_cell
+    from .pointeval_utils import compile_element
+    from .meshpatch import src_locate_cell
 
     mesh = function.ufl_domain()
     src = [src_locate_cell(mesh, tolerance=tolerance)]

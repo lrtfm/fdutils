@@ -8,7 +8,6 @@ modules:
 develop: clean
 	@echo "    Develop the extension "
 	@python setup.py develop > develop.log 2>&1 || cat develop.log
-	
 
 clean:
 	@echo "    Cleaning extension modules"

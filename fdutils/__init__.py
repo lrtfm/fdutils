@@ -1,4 +1,4 @@
-from peval.pointcloud import *
-from peval.meshpatch import *
+from .meshpatch import *
+from .tools import *
 
 
