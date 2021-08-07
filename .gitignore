@@ -1,0 +1,7 @@
+__pycache__
+.ipynb_checkpoints
+build
+*.so
+*.log
+fdutils.egg-info
+fdutils/evalpatch.c
