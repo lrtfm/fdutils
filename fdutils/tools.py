@@ -12,13 +12,14 @@ from petsc4py import PETSc
 import numpy as np
 
 from .pointarray import PointArray
+from .pointvom import PointVOM
 
 __all__ = ['PointArray',
            'get_nodes_coords', 
            'get_cg_function_space', 
            'errornorm']
 
-eval_method2cls = {'at': PointArray, None: PointArray}
+eval_method2cls = {'at': PointArray, 'vom': PointVOM, None: PointArray}
 
 try:
     from .pointcloud import PointCloud
