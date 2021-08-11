@@ -1,4 +1,4 @@
-from .meshpatch import *
-from .tools import *
+from fdutils.meshpatch import *
+from fdutils.tools import *
 
 

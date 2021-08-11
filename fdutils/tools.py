@@ -11,8 +11,8 @@ from firedrake import norms
 from petsc4py import PETSc
 import numpy as np
 
-from .pointarray import PointArray
-from .pointvom import PointVOM
+from fdutils.pointarray import PointArray
+from fdutils.pointvom import PointVOM
 
 __all__ = ['PointArray',
            'get_nodes_coords', 
@@ -22,7 +22,7 @@ __all__ = ['PointArray',
 eval_method2cls = {'at': PointArray, 'vom': PointVOM, None: PointArray}
 
 try:
-    from .pointcloud import PointCloud
+    from fdutils.pointcloud import PointCloud
 except ImportError: 
     logging.warning('PointCloud can not be imported! We will use PointArray!')
 except:

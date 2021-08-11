@@ -18,7 +18,7 @@ from ctypes import POINTER, c_int, c_double, c_void_p
 from firedrake.function import _CFunction
 
 try:
-    from .evalpatch import build_two_sided
+    from fdutils.evalpatch import build_two_sided
 except ModuleNotFoundError:
      raise
 except:
@@ -485,8 +485,8 @@ def make_c_evaluate(function, c_name="evaluate_points", ldargs=None, tolerance=N
     from firedrake import utils
     import firedrake.pointquery_utils as pq_utils
     
-    from .pointeval_utils import compile_element
-    from .meshpatch import src_locate_cell
+    from fdutils.pointeval_utils import compile_element
+    from fdutils.meshpatch import src_locate_cell
 
     mesh = function.ufl_domain()
     src = [src_locate_cell(mesh, tolerance=tolerance)]
