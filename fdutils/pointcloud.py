@@ -314,9 +314,10 @@ class PointCloud(object):
                   comm=self.mesh.comm)
         syncFlush(comm=self.mesh.comm)
         
-        np_not_found = len(np.where(located_elements[:, 1] == -1)[0])
-        if np_not_found > 0:
-            logging.warning('[%d] %d points not located!'%(self.mesh.comm.rank, np_not_found))
+        np_not_found_index = np.where(located_elements[:, 1] == -1)[0]
+        if len(np_not_found_index) > 0:
+            logging.warning('[%d] %d points not located!'%(self.mesh.comm.rank, len(np_not_found_index)))
+            logging.warning('[%d] points list: %s!'%(self.mesh.comm.rank, self.points[np_not_found_index, :]))
         # PETSc.Sys.syncFlush()
         
         return located_elements
