@@ -1,5 +1,6 @@
 """ some utils for Firedrake
 """
+import sys
 
 from firedrake import functionspaceimpl as impl
 from firedrake.functionspace import FunctionSpace, VectorFunctionSpace
@@ -126,11 +127,21 @@ def prepare_errornorm_handle(funs, compare_method=None, eval_method=None, tolera
         pcs.append(pc)
         f_inters.append(f_inter)
         
+    if isinstance(norm_type, str):
+        norm_types = [norm_type,]
+    else:
+        norm_types = norm_type
+        
     def get_errors():
-        errs = []
+        errs = {}
+        for nt in norm_types:
+            errs[nt] = []
         for i in range(n-1):
             f_inters[i].dat.data[:] = pcs[i].evaluate(funs[i])
-            errs.append(norms.errornorm(f_inters[i], ref_handle(funs, i), norm_type=norm_type))
+            for nt in norm_types:
+                errs[nt].append(norms.errornorm(f_inters[i], ref_handle(funs, i), norm_type=nt))
+        if len(norm_types) == 1:
+            errs = errs[norm_types[0]]
         return errs
         
     return get_errors
