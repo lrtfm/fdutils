@@ -5,7 +5,10 @@ __all__ = ['isnotebook', 'ptqdm']
 
 def isnotebook():
     """
-    url: https://stackoverflow.com/a/39662359
+    Check whether you are in notebook.
+    
+    Ref:
+        url: https://stackoverflow.com/a/39662359
     """
     try:
         shell = get_ipython().__class__.__name__
@@ -20,7 +23,7 @@ def isnotebook():
 
 
 class ptqdm:
-    """ptqdm for parallel use of tqdm"""
+    """A parallel wraper of tqdm (progressbar)"""
     
     __config__ = {'ncols': None if isnotebook() else 80, 'ascii': True}
     

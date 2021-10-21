@@ -16,8 +16,9 @@ from fdutils.pointarray import PointArray
 from fdutils.pointvom import PointVOM
 
 __all__ = ['PointArray',
-           'get_nodes_coords', 
-           'get_cg_function_space', 
+           'PointVOM',
+           # 'get_nodes_coords', 
+           # 'get_cg_function_space', 
            'errornorm']
 
 eval_method2cls = {'at': PointArray, 'vom': PointVOM, None: PointArray}

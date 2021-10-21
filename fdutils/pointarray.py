@@ -28,6 +28,32 @@ def evaluate_fun(fun, points, tolerance=None):
 
 
 class PointArray():
+    """
+    A class to help evaluate functions on points.
+    
+    This is a wrapper for at method of function to present the same
+    interface as `PointCloud`.
+    
+    Example code:
+        ```
+        from firedrake import *
+        from fdutils import *
+
+        mesh = RectangleMesh(10, 10, 1, 1)
+        x, y = SpatialCoordinate(mesh)
+        V = FunctionSpace(mesh, 'CG', 1)
+        f1 = Function(V).interpolate(x**2 + y**2)
+        f2 = Function(V).interpolate(sin(x) + y**2)
+
+        mesh2 = RectangleMesh(20, 20, 1, 1)
+        points = mesh2.coordinates.dat.data_ro
+
+        pc = PointArray(mesh, points, tolerance=1e-12)
+        v1 = pc.evaluate(f1)
+        v2 = pc.evaluate(f2)
+        ```
+    """
+    
     def __init__(self, mesh, points, tolerance=None):
         self.points = points
         self.tolerance = tolerance

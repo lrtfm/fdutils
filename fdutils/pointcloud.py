@@ -50,7 +50,34 @@ def syncFlush(*args, **kwargs):
 class PointCloud(object):
     """Store points for repeated location in a mesh. Facilitates lookup and evaluation
     at these point locations.
+    
+    Most code of this class are copied form firedrake repo.
+    
+    This class is used to evaluate functions for many times on 
+    a group of points. It works in case that you give different points 
+    on different mpi rank. This is an alternative solution before
+    `VertexOnlyMesh` in Firedrake supporting this function.
+    
+    Exmaple code:
+        ```
+        from firedrake import *
+        from fdutils import PointCloud
+
+        mesh = RectangleMesh(10, 10, 1, 1)
+        x, y = SpatialCoordinate(mesh)
+        V = FunctionSpace(mesh, 'CG', 1)
+        f1 = Function(V).interpolate(x**2 + y**2)
+        f2 = Function(V).interpolate(sin(x) + y**2)
+
+        mesh2 = RectangleMesh(20, 20, 1, 1)
+        points = mesh2.coordinates.dat.data_ro
+
+        pc = PointCloud(mesh, points, tolerance=1e-12)
+        v1 = pc.evaluate(f1)
+        v2 = pc.evaluate(f2)
+        ```
     """
+    
     def __init__(self, mesh, points, tolerance=None, *args, **kwargs):
         """Initialise the PointCloud.
 
