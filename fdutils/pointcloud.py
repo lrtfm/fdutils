@@ -237,7 +237,7 @@ class PointCloud(object):
         self.statistics["num_points_found"] += \
             np.count_nonzero(located_elements[:, 0] != -1)
         self.statistics["local_found_frac"] = \
-            self.statistics["num_points_found"] / len(self.points)
+            self.statistics["num_points_found"] / (len(self.points) or 1)  # fix ZeroDivisionError: division by zero
         self.statistics["num_candidates"] = len(local_candidates)
 
         syncPrint("[%d] Located elements: %s" % (self.mesh.comm.rank,
@@ -508,7 +508,12 @@ def make_c_evaluate(function, c_name="evaluate_points", ldargs=None, tolerance=N
     
     from pyop2 import compilation, op2
     from pyop2.utils import get_petsc_dir
-    from pyop2.sequential import generate_single_cell_wrapper
+    # https://github.com/firedrakeproject/firedrake/pull/2235
+    # TODO: remove the try
+    try:
+        from pyop2.sequential import generate_single_cell_wrapper
+    except ModuleNotFoundError:
+        from pyop2.parloop import generate_single_cell_wrapper
     
     from firedrake import utils
     import firedrake.pointquery_utils as pq_utils
