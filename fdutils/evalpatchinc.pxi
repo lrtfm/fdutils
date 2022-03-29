@@ -14,6 +14,7 @@ ELSE:
 cdef extern from "petsc.h":
    ctypedef long PetscInt
    ctypedef double PetscReal
+   ctypedef double PetscLogDouble
    ctypedef enum PetscBool:
        PETSC_TRUE, PETSC_FALSE
    ctypedef enum PetscCopyMode:
@@ -27,6 +28,9 @@ cdef extern from "petscsys.h" nogil:
    int PetscSortIntWithArray(PetscInt,PetscInt[],PetscInt[])
    int PetscCommBuildTwoSided(MPI.MPI_Comm,int,MPI.MPI_Datatype,int,const int *, const void *,
                               int *, int **, void *)
+
+   int PetscMallocGetCurrentUsage(PetscLogDouble*)
+   int PetscMemoryGetCurrentUsage(PetscLogDouble*)
 
     
 # --- Error handling taken from petsc4py (src/PETSc.pyx) -------------

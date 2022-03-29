@@ -46,3 +46,13 @@ def build_two_sided(MPI.Comm comm, count, MPI.Datatype dtype,
     CHKERR(PetscFree(fromdata))
     CHKERR(PetscFree(fromranks))
     return pyfromranks, pyfromdata
+
+def get_memory_usage():
+    cdef:
+        double mal
+        double mem
+
+    CHKERR(PetscMallocGetCurrentUsage(&mal))
+    CHKERR(PetscMemoryGetCurrentUsage(&mem))
+
+    return mal, mem
