@@ -16,6 +16,7 @@ from pyop2.profiling import timed_region
 from ctypes import POINTER, c_int, c_double, c_void_p
 
 from firedrake.function import _CFunction
+import firedrake.utils as utils
 
 try:
     from fdutils.evalpatch import build_two_sided
@@ -85,7 +86,13 @@ class PointCloud(object):
         :arg points: An N x mesh.geometric_dimension() array of point locations.
         """
         self.mesh = mesh
-        self.points = np.asarray(points)
+        points = np.asarray(points)
+        if utils.complex_mode:
+            if not np.allclose(points.imag, 0):
+                raise ValueError("Provided points have non-zero imaginary part")
+            self.points = points.real.copy()
+        else:
+            self.points = points
         syncPrint('[%d]'%mesh.comm.rank, points)
         self.tolerance = tolerance
         _, dim = points.shape
@@ -132,8 +139,20 @@ class PointCloud(object):
 
         :returns: A libspatialindex spatial index structure.
         """
-        min_c = self.mesh.coordinates.dat.data_ro_with_halos.min(axis=0)
-        max_c = self.mesh.coordinates.dat.data_ro_with_halos.max(axis=0)
+        from firedrake import function
+        from firedrake.utils import RealType
+        if utils.complex_mode:
+            if not np.allclose(self.mesh.coordinates.dat.data_ro.imag, 0):
+                raise ValueError("Coordinate field has non-zero imaginary part")
+            coords = function.Function(self.mesh.coordinates.function_space(),
+                                       val=self.mesh.coordinates.dat.data_ro_with_halos.real.copy(),
+                                       dtype=RealType)
+        else:
+            coords = self.mesh.coordinates
+
+
+        min_c = coords.dat.data_ro_with_halos.min(axis=0)
+        max_c = coords.dat.data_ro_with_halos.max(axis=0)
         
         # Format: [min_x, min_y, min_z, max_x, max_y, max_z]
         local = np.concatenate([min_c, max_c])
