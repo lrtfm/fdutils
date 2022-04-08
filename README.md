@@ -1,5 +1,11 @@
 # Utils for Firedrake
 
+## Requirements 
+1. Firedrake: https://github.com/firedrakeproject/firedrake 
+2. tqdm: https://pypi.org/project/tqdm 
+3. meshio: https://pypi.org/project/meshio/
+<!--4. Gmsh: https://pypi.org/project/gmsh -->
+
 ## How to use
 
 1. clone the files
@@ -62,7 +68,7 @@
 
 1. Class `fdutils.ptqdm`
 
-
 ### Get information of mesh
 
 1. `fdutils.meshutils`
+
