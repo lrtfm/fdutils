@@ -42,19 +42,19 @@ def get_nodes_coords(fun):
     mesh = fun.ufl_domain()
     element = fun.ufl_element()
     
-    assert(element.family() == 'Lagrange')
-
     degree = element.degree()
+    assert((element.family() == 'Lagrange' and degree > 0) or
+           (element.family() == 'Discontinuous Lagrange' and degree == 0))
+
     if degree == 1:
         points = mesh.coordinates.dat.data_ro.copy()
     else:
-        C = VectorFunctionSpace(mesh, 'CG', degree)
+        C = VectorFunctionSpace(mesh, 'CG' if degree > 0 else 'DG', degree)
         interp_coordinates = Function(C)
         interp_coordinates.interpolate(mesh.coordinates)
         points = interp_coordinates.dat.data_ro.copy()
 
     return points
-
 
 def get_cg_function_space(u, degree=None):
     '''Get a CG space that including the space of u_ref
