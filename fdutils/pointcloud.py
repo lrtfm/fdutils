@@ -10,7 +10,7 @@ from firedrake.utils import cached_property
 from firedrake.petsc import PETSc
 from firedrake import logging
 from pyop2.mpi import MPI
-from pyop2.datatypes import IntType, ScalarType
+from pyop2.datatypes import IntType, RealType, ScalarType
 from pyop2.profiling import timed_region
 
 from ctypes import POINTER, c_int, c_double, c_void_p
@@ -406,7 +406,7 @@ class PointCloud(object):
             for i in range(0, len(from_ranks)):
                 recv_cells_buffers[from_ranks[i]] = np.empty(from_data[i], dtype=IntType)
                 recv_points_buffers[from_ranks[i]] = np.empty(
-                    (from_data[i], self.mesh.geometric_dimension()), dtype=ScalarType)
+                    (from_data[i], self.mesh.geometric_dimension()), dtype=RealType)
 
             # Receive all point requests
 
