@@ -2,8 +2,10 @@ import os
 import sys
 import ctypes
 import numpy as np
+from pyop2.datatypes import IntType, RealType, ScalarType
 
 from firedrake.mesh import MeshGeometry
+import firedrake.utils as utils
 import firedrake.pointquery_utils as pointquery_utils
 
 __all__ = []
@@ -38,12 +40,16 @@ def src_locate_cell(mesh, tolerance=None):
 def locate_cells(self, points, tolerance=None):
     if self.variable_layers:
         raise NotImplementedError("Cell location not implemented for variable layers")
-    points = np.asarray(points, dtype=np.float64).reshape(-1, self.geometric_dimension())
+    points = np.asarray(points, dtype=ScalarType).reshape(-1, self.geometric_dimension())
+    if utils.complex_mode:
+        if not np.allclose(points.imag, 0):
+            raise ValueError("Provided points have non-zero imaginary part")
+        points = points.real.copy()
     npoint, _ = points.shape
-    cells = np.empty(npoint, dtype=np.int32)
+    cells = np.empty(npoint, dtype=IntType)
     self._c_locators(tolerance=tolerance)(self.coordinates._ctypes,
                                          points.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
-                                         npoint,
+                                         npoint, # TODO: is this right?
                                          cells.ctypes.data_as(ctypes.POINTER(ctypes.c_int)))
     return cells
 
