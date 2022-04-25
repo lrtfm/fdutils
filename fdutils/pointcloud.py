@@ -294,7 +294,7 @@ class PointCloud(object):
             recv_points_buffers = {}
             for i in range(0, len(from_ranks)):
                 recv_points_buffers[from_ranks[i]] = np.empty(
-                    (from_data[i], self.mesh.geometric_dimension()), dtype=ScalarType)
+                    (from_data[i], self.mesh.geometric_dimension()), dtype=RealType)
 
             # Receive all point requests
 

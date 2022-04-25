@@ -42,6 +42,8 @@ def locate_cells(self, points, tolerance=None):
         raise NotImplementedError("Cell location not implemented for variable layers")
     points = np.asarray(points, dtype=ScalarType).reshape(-1, self.geometric_dimension())
     if utils.complex_mode:
+        if not np.allclose(points.imag, 0):
+            raise ValueError("Provided points have non-zero imaginary part")
         points = points.real.copy()
     npoint, _ = points.shape
     cells = np.empty(npoint, dtype=IntType)
