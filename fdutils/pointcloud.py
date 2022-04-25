@@ -8,10 +8,10 @@ from firedrake.mesh import spatialindex
 # from firedrake.dmplex import build_two_sided
 from firedrake.utils import cached_property
 from firedrake.petsc import PETSc
-from firedrake import logging
 from pyop2.mpi import MPI
 from pyop2.datatypes import IntType, RealType, ScalarType
 from pyop2.profiling import timed_region
+import logging
 
 from ctypes import POINTER, c_int, c_double, c_void_p
 
@@ -28,23 +28,30 @@ except:
 
 __all__ = ["PointCloud"]
 
+# TODO: move to a file?
+logger = logging.getLogger("fdutils")
+for handler in logger.handlers:
+    logger.removeHandler(handler)
+handler = logging.StreamHandler()
+handler.setFormatter(logging.Formatter(fmt="%(name)s:%(levelname)s %(message)s"))
+logger.addHandler(handler)
 
 def syncPrint(*args, **kwargs):
     """Perform a PETSc syncPrint operation with given arguments if the logging level is
     set to at least debug.
     """
-    if logging.logger.isEnabledFor(logging.DEBUG):
+    if logger.isEnabledFor(logging.DEBUG):
         PETSc.Sys.syncPrint(*args, **kwargs)
         
 def Print(*args, **kwargs):
-    if logging.logger.isEnabledFor(logging.DEBUG):
+    if logger.isEnabledFor(logging.DEBUG):
         PETSc.Sys.Print(*args, **kwargs)
 
 def syncFlush(*args, **kwargs):
     """Perform a PETSc syncFlush operation with given arguments if the logging level is
     set to at least debug.
     """
-    if logging.logger.isEnabledFor(logging.DEBUG):
+    if logger.isEnabledFor(logging.DEBUG):
         PETSc.Sys.syncFlush(*args, **kwargs)
 
 
@@ -109,6 +116,8 @@ class PointCloud(object):
         self.statistics["num_messages_sent"] = 0
         self.statistics["num_points_evaluated"] = 0
         self.statistics["num_points_found"] = 0
+
+        self.points_not_found_indices = None
 
     @cached_property
     def locations(self):
@@ -359,13 +368,13 @@ class PointCloud(object):
                                                  located_elements.tolist()),
                   comm=self.mesh.comm)
         syncFlush(comm=self.mesh.comm)
-        
-        np_not_found_index = np.where(located_elements[:, 1] == -1)[0]
-        if len(np_not_found_index) > 0:
-            logging.warning('[%d] %d points not located!'%(self.mesh.comm.rank, len(np_not_found_index)))
-            logging.warning('[%d] points list: %s!'%(self.mesh.comm.rank, self.points[np_not_found_index, :]))
-        # PETSc.Sys.syncFlush()
-        
+
+        points_not_found_indices = np.where(located_elements[:, 1] == -1)[0]
+        if len(points_not_found_indices) > 0:
+            self.points_not_found_indices = points_not_found_indices
+            logger.warning('[%d/%d] PointCloud._locate_mesh_elements: %d points not located!'%(
+                self.mesh.comm.rank, self.mesh.comm.size, len(points_not_found_indices)))
+
         return located_elements
 
     @cached_property
@@ -423,7 +432,7 @@ class PointCloud(object):
         return (recv_cells_buffers, recv_points_buffers, rank2cells)
 
     @PETSc.Log.EventDecorator()
-    def evaluate(self, function):
+    def evaluate(self, function, callback=None):
         """Evaluate a function at the located points.
         :arg function: The function to evaluate.
         """
@@ -432,26 +441,21 @@ class PointCloud(object):
             raise('The function must be defined on the mesh of this PointCloud!')
         
         rank = self.mesh.comm.rank
-        size = self.mesh.comm.rank
+        size = self.mesh.comm.size
         
         # must do this!
-        Print('A0'*30)
         from pyop2 import op2
         function.dat.global_to_local_begin(op2.READ)
         function.dat.global_to_local_end(op2.READ)
-    
         
-        Print('A'*30)
         recv_cells_buffers, recv_points_buffers, rank2cells = self.evaluate_info
         
         values = {}
         
-        Print('B'*30)
         for r, cells in recv_cells_buffers.items():
             ps = recv_points_buffers[r]
             values[r] = batch_eval(function, cells, ps, tolerance=self.tolerance)
             
-        Print('C'*30)
         n = len(self.points)
         m = np.prod(function.ufl_shape, dtype=np.int64)
         array_shape = lambda number: number if m == 1 else [number, m]
@@ -468,17 +472,30 @@ class PointCloud(object):
         
         values.pop(rank)
         
-        Print('D'*30)
         with timed_region("EvalResultExchange"):
             self._perform_sparse_communication_round(recv_values_buffers, values)
 
-        Print('E'*30)
         for r, v in recv_values_buffers.items():
             if m == 1:
                 ret[rank2cells[r][0]] = v
             else:
                 ret[rank2cells[r][0], :] = v
         
+        if self.points_not_found_indices is not None:
+            if len(self.points_not_found_indices) > 0:
+                num_points = len(self.points_not_found_indices)
+                points_not_found = self.points[self.points_not_found_indices, :]
+                if callback is not None:
+                    logger.warning('[%d/%d] PointCloud.evaluate: %d points not located, the callback is called!'\
+                                    %(rank, size, num_points))
+                    if m == 1:
+                        ret[self.points_not_found_indices] = callback(points_not_found)
+                    else:
+                        ret[self.points_not_found_indices, :] = callback(points_not_found)
+                else:
+                    logger.warning('[%d/%d] PointCloud.evaluate: %d points not located, the values are set to zero!'\
+                                    %(rank, size, num_points))
+
         return ret
     
 @PETSc.Log.EventDecorator()
@@ -496,7 +513,7 @@ def batch_eval(function, cells, xs, tolerance=None):
                                                 buf.ctypes.data_as(c_void_p))
     if err > 0:
         # PETSc.Sys.syncPrint
-        logging.warning('[%d]: %d of %d points are located in wrong place!'%(function.comm.rank, err, n))
+        logger.warning('[%d]: %d of %d points are located in wrong place!'%(function.comm.rank, err, n))
         
     if err == -1:
         raise PointNotInDomainError('We won\'t be here!')
