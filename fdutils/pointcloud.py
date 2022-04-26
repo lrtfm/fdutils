@@ -370,10 +370,11 @@ class PointCloud(object):
         syncFlush(comm=self.mesh.comm)
 
         points_not_found_indices = np.where(located_elements[:, 1] == -1)[0]
+        self.points_not_found_indices = points_not_found_indices
         if len(points_not_found_indices) > 0:
-            self.points_not_found_indices = points_not_found_indices
-            logger.warning('[%d/%d] PointCloud._locate_mesh_elements: %d points not located!'%(
+            logger.warning('[%2d/%2d] PointCloud._locate_mesh_elements: %d points not located!'%(
                 self.mesh.comm.rank, self.mesh.comm.size, len(points_not_found_indices)))
+        # PETSc.Sys.syncFlush()
 
         return located_elements
 
@@ -481,20 +482,26 @@ class PointCloud(object):
             else:
                 ret[rank2cells[r][0], :] = v
         
-        if self.points_not_found_indices is not None:
-            if len(self.points_not_found_indices) > 0:
-                num_points = len(self.points_not_found_indices)
-                points_not_found = self.points[self.points_not_found_indices, :]
-                if callback is not None:
-                    logger.warning('[%d/%d] PointCloud.evaluate: %d points not located, the callback is called!'\
-                                    %(rank, size, num_points))
-                    if m == 1:
-                        ret[self.points_not_found_indices] = callback(points_not_found)
-                    else:
-                        ret[self.points_not_found_indices, :] = callback(points_not_found)
-                else:
-                    logger.warning('[%d/%d] PointCloud.evaluate: %d points not located, the values are set to zero!'\
-                                    %(rank, size, num_points))
+        # Notes: Make sure every process call callback for parallell case.
+        #        How to do it more reasonable?
+        if len(self.points_not_found_indices) > 0:
+            num_points = len(self.points_not_found_indices)
+            points_not_found = self.points[self.points_not_found_indices, :]
+            if callback is not None:
+                # TODO: sync to the first process and then print?
+                logger.warning('[%2d/%2d] PointCloud.evaluate: %d points not located, the callback is called!'\
+                                %(rank, size, num_points))
+            else:
+                logger.warning('[%2d/%2d] PointCloud.evaluate: %d points not located, the values are set to zero!'\
+                                %(rank, size, num_points))
+        else:
+            num_points = 0
+            points_not_found = np.zeros([0, self.points.shape[1]], dtype=RealType)
+        if callback is not None:
+            if m == 1:
+                ret[self.points_not_found_indices] = callback(points_not_found)
+            else:
+                ret[self.points_not_found_indices, :] = callback(points_not_found)
 
         return ret
     
