@@ -142,6 +142,7 @@ class PointCloud(object):
         rank_cell_pairs = self._locate_mesh_elements(tolerance=self.tolerance)
         return np.array(rank_cell_pairs, dtype=IntType)
 
+    @PETSc.Log.EventDecorator()
     def _build_processes_spatial_index(self):
         """Build a spatial index of processes using the bounding boxes of each process.
         This will be used to determine which processes may hold a given point.
@@ -181,6 +182,7 @@ class PointCloud(object):
         # Build spatial indexes from bounds.
         return spatialindex.from_regions(min_bounds, max_bounds)
 
+    @PETSc.Log.EventDecorator()
     def _get_candidate_processes(self, point):
         """Determine candidate processes for a given point.
 
@@ -191,6 +193,7 @@ class PointCloud(object):
         candidates = spatialindex.bounding_boxes(self.processes_index, point)
         return candidates[candidates != self.mesh.comm.rank]
 
+    @PETSc.Log.EventDecorator()
     def _perform_sparse_communication_round(self, recv_buffers, send_data):
         """Perform a sparse communication round in the point location process.
 
@@ -216,6 +219,7 @@ class PointCloud(object):
 
         MPI.Request.Waitall(recv_reqs + send_reqs)
 
+    @PETSc.Log.EventDecorator()
     def _locate_mesh_elements(self, tolerance=None):
         """Determine the location of each input point using the algorithm described in
         `self.locations`.
@@ -379,6 +383,7 @@ class PointCloud(object):
         return located_elements
 
     @cached_property
+    @PETSc.Log.EventDecorator()
     def evaluate_info(self):
         loc = self.locations
         rank = self.mesh.comm.rank
@@ -451,27 +456,28 @@ class PointCloud(object):
         
         recv_cells_buffers, recv_points_buffers, rank2cells = self.evaluate_info
         
-        values = {}
-        
-        for r, cells in recv_cells_buffers.items():
-            ps = recv_points_buffers[r]
-            values[r] = batch_eval(function, cells, ps, tolerance=self.tolerance)
+        with timed_region("Eval"):
+            values = {}
+            for r, cells in recv_cells_buffers.items():
+                ps = recv_points_buffers[r]
+                values[r] = batch_eval(function, cells, ps, tolerance=self.tolerance)
+                
+        with timed_region("PrepareBuffers"):
+            n = len(self.points)
+            m = np.prod(function.ufl_shape, dtype=np.int64)
+            array_shape = lambda number: number if m == 1 else [number, m]
+            ret = np.zeros(array_shape(n), dtype=ScalarType)
+            if m == 1:
+                ret[rank2cells[rank][0]] = values[rank]
+            else:
+                ret[rank2cells[rank][0], :] = values[rank]
             
-        n = len(self.points)
-        m = np.prod(function.ufl_shape, dtype=np.int64)
-        array_shape = lambda number: number if m == 1 else [number, m]
-        ret = np.zeros(array_shape(n), dtype=ScalarType)
-        if m == 1:
-            ret[rank2cells[rank][0]] = values[rank]
-        else:
-            ret[rank2cells[rank][0], :] = values[rank]
-        
-        recv_values_buffers = {}
-        for r, pair in rank2cells.items():
-            if r != rank:
-                recv_values_buffers[r] = np.empty(array_shape(len(pair[0])), dtype=ScalarType)
-        
-        values.pop(rank)
+            recv_values_buffers = {}
+            for r, pair in rank2cells.items():
+                if r != rank:
+                    recv_values_buffers[r] = np.empty(array_shape(len(pair[0])), dtype=ScalarType)
+            
+            values.pop(rank)
         
         with timed_region("EvalResultExchange"):
             self._perform_sparse_communication_round(recv_values_buffers, values)
@@ -482,26 +488,27 @@ class PointCloud(object):
             else:
                 ret[rank2cells[r][0], :] = v
         
-        # Notes: Make sure every process call callback for parallell case.
-        #        How to do it more reasonable?
-        if len(self.points_not_found_indices) > 0:
-            num_points = len(self.points_not_found_indices)
-            points_not_found = self.points[self.points_not_found_indices, :]
+        with timed_region("Callback"):
+            # Notes: Make sure every process call callback for parallell case.
+            #        How to do it more reasonable?
+            if len(self.points_not_found_indices) > 0:
+                num_points = len(self.points_not_found_indices)
+                points_not_found = self.points[self.points_not_found_indices, :]
+                if callback is not None:
+                    # TODO: sync to the first process and then print?
+                    logger.warning('[%2d/%2d] PointCloud.evaluate: %d points not located, the callback is called!'\
+                                    %(rank, size, num_points))
+                else:
+                    logger.warning('[%2d/%2d] PointCloud.evaluate: %d points not located, the values are set to zero!'\
+                                    %(rank, size, num_points))
+            else:
+                num_points = 0
+                points_not_found = np.zeros([0, self.points.shape[1]], dtype=RealType)
             if callback is not None:
-                # TODO: sync to the first process and then print?
-                logger.warning('[%2d/%2d] PointCloud.evaluate: %d points not located, the callback is called!'\
-                                %(rank, size, num_points))
-            else:
-                logger.warning('[%2d/%2d] PointCloud.evaluate: %d points not located, the values are set to zero!'\
-                                %(rank, size, num_points))
-        else:
-            num_points = 0
-            points_not_found = np.zeros([0, self.points.shape[1]], dtype=RealType)
-        if callback is not None:
-            if m == 1:
-                ret[self.points_not_found_indices] = callback(points_not_found)
-            else:
-                ret[self.points_not_found_indices, :] = callback(points_not_found)
+                if m == 1:
+                    ret[self.points_not_found_indices] = callback(points_not_found)
+                else:
+                    ret[self.points_not_found_indices, :] = callback(points_not_found)
 
         return ret
     
