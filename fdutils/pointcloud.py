@@ -255,17 +255,36 @@ class PointCloud(object):
                 local_candidates = {}
                 local_candidate_indices = {}
 
-                for point, idx in zip(points_not_found, not_found_indices):
-                    # Point not found locally -- get candidates from processes spatial
-                    # index.
-                    point_candidates = self._get_candidate_processes(point)
-                    for candidate in point_candidates:
-                        local_candidates.setdefault(candidate, []).append(point)
-                        local_candidate_indices.setdefault(candidate, []).append(idx)
+                n_not_found = len(not_found_indices)
+                num_p_in_rank = np.zeros(n_not_found, dtype=IntType)
+                candidates_list = [None for _ in range(n_not_found)]
+                with timed_region("CandidateIdentificationA"):
+                    for i, (point, idx) in enumerate(zip(points_not_found, not_found_indices)):
+                        # Point not found locally -- get candidates from processes spatial
+                        # index.
+                        point_candidates = self._get_candidate_processes(point)
+                        num_p_in_rank[point_candidates] += 1
+                        candidates_list[i] = point_candidates
 
-                    syncPrint("[%d] Cell not found locally for point %s. Candidates: %s"
-                              % (self.mesh.comm.rank, point, point_candidates),
-                              comm=self.mesh.comm)
+                        # # Will this take too much time
+                        # syncPrint("[%d] Cell not found locally for point %s. Candidates: %s"
+                        #           % (self.mesh.comm.rank, point, point_candidates),
+                        #           comm=self.mesh.comm)
+                with timed_region("CandidateIdentificationB"):
+                    for r, num in enumerate(num_p_in_rank):
+                        if num > 0:
+                          local_candidate_indices[r] = np.zeros(num, dtype=IntType)
+
+                index_in_rank = np.zeros(n_not_found, dtype=IntType)
+                with timed_region("CandidateIdentificationC"):
+                    for i, idx in enumerate(not_found_indices):
+                        point_candidates = candidates_list[i]
+                        for candidate in point_candidates:
+                            local_candidate_indices[candidate][index_in_rank[candidate]] = idx
+                        index_in_rank[point_candidates] += 1
+                with timed_region("CandidateIdentificationD"):
+                    for r, idxs in local_candidate_indices.items():
+                        local_candidates[r] = self.points[idxs]
 
             syncFlush(comm=self.mesh.comm)
 
@@ -276,14 +295,15 @@ class PointCloud(object):
                 self.statistics["num_points_found"] / (len(self.points) or 1)  # fix ZeroDivisionError: division by zero
             self.statistics["num_candidates"] = len(local_candidates)
 
-        with timed_region("DebugPrintLocateInfoA"):
-            syncPrint("[%d] Located elements: %s" % (self.mesh.comm.rank,
-                                                     located_elements.tolist()),
-                      comm=self.mesh.comm)
-            syncFlush(comm=self.mesh.comm)
-            syncPrint("[%d] Local candidates: %s" % (self.mesh.comm.rank, local_candidates),
-                      comm=self.mesh.comm)
-            syncFlush(comm=self.mesh.comm)
+        # # This part will take most time, so we comment out this one
+        # with timed_region("DebugPrintLocateInfoA"):
+        #     syncPrint("[%d] Located elements: %s" % (self.mesh.comm.rank,
+        #                                              located_elements.tolist()),
+        #               comm=self.mesh.comm)
+        #     syncFlush(comm=self.mesh.comm)
+        #     syncPrint("[%d] Local candidates: %s" % (self.mesh.comm.rank, local_candidates),
+        #               comm=self.mesh.comm)
+        #     syncFlush(comm=self.mesh.comm)
 
         # Exchange data for point requests.
         with timed_region("PointExchange"):
