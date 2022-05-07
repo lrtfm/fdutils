@@ -36,6 +36,7 @@ handler = logging.StreamHandler()
 handler.setFormatter(logging.Formatter(fmt="%(name)s:%(levelname)s %(message)s"))
 logger.addHandler(handler)
 
+@PETSc.Log.EventDecorator()
 def syncPrint(*args, **kwargs):
     """Perform a PETSc syncPrint operation with given arguments if the logging level is
     set to at least debug.
@@ -43,10 +44,12 @@ def syncPrint(*args, **kwargs):
     if logger.isEnabledFor(logging.DEBUG):
         PETSc.Sys.syncPrint(*args, **kwargs)
         
+@PETSc.Log.EventDecorator()
 def Print(*args, **kwargs):
     if logger.isEnabledFor(logging.DEBUG):
         PETSc.Sys.Print(*args, **kwargs)
 
+@PETSc.Log.EventDecorator()
 def syncFlush(*args, **kwargs):
     """Perform a PETSc syncFlush operation with given arguments if the logging level is
     set to at least debug.
@@ -266,19 +269,21 @@ class PointCloud(object):
 
             syncFlush(comm=self.mesh.comm)
 
-        self.statistics["num_points_found"] += \
-            np.count_nonzero(located_elements[:, 0] != -1)
-        self.statistics["local_found_frac"] = \
-            self.statistics["num_points_found"] / (len(self.points) or 1)  # fix ZeroDivisionError: division by zero
-        self.statistics["num_candidates"] = len(local_candidates)
+        with timed_region("StatisticsInfoA"):
+            self.statistics["num_points_found"] += \
+                np.count_nonzero(located_elements[:, 0] != -1)
+            self.statistics["local_found_frac"] = \
+                self.statistics["num_points_found"] / (len(self.points) or 1)  # fix ZeroDivisionError: division by zero
+            self.statistics["num_candidates"] = len(local_candidates)
 
-        syncPrint("[%d] Located elements: %s" % (self.mesh.comm.rank,
-                                                 located_elements.tolist()),
-                  comm=self.mesh.comm)
-        syncFlush(comm=self.mesh.comm)
-        syncPrint("[%d] Local candidates: %s" % (self.mesh.comm.rank, local_candidates),
-                  comm=self.mesh.comm)
-        syncFlush(comm=self.mesh.comm)
+        with timed_region("DebugPrintLocateInfoA"):
+            syncPrint("[%d] Located elements: %s" % (self.mesh.comm.rank,
+                                                     located_elements.tolist()),
+                      comm=self.mesh.comm)
+            syncFlush(comm=self.mesh.comm)
+            syncPrint("[%d] Local candidates: %s" % (self.mesh.comm.rank, local_candidates),
+                      comm=self.mesh.comm)
+            syncFlush(comm=self.mesh.comm)
 
         # Exchange data for point requests.
         with timed_region("PointExchange"):
@@ -315,10 +320,11 @@ class PointCloud(object):
             self._perform_sparse_communication_round(recv_points_buffers,
                                                      local_candidates)
 
-        syncPrint("[%d] Point queries requested: %s" % (self.mesh.comm.rank,
-                                                        str(recv_points_buffers)),
-                  comm=self.mesh.comm)
-        syncFlush(comm=self.mesh.comm)
+        with timed_region("DebugPrintLocateInfoB"):
+            syncPrint("[%d] Point queries requested: %s" % (self.mesh.comm.rank,
+                                                            str(recv_points_buffers)),
+                      comm=self.mesh.comm)
+            syncFlush(comm=self.mesh.comm)
 
         # Evaluate all point requests and prepare responses
         with timed_region("RemoteLocation"):
@@ -332,10 +338,11 @@ class PointCloud(object):
                 self.statistics["num_points_found"] += \
                     np.count_nonzero(point_responses[rank] != -1)
 
-        syncPrint("[%d] Point responses: %s" % (self.mesh.comm.rank,
-                                                str(point_responses)),
-                  comm=self.mesh.comm)
-        syncFlush(comm=self.mesh.comm)
+        with timed_region("DebugPrintLocateInfoC"):
+            syncPrint("[%d] Point responses: %s" % (self.mesh.comm.rank,
+                                                    str(point_responses)),
+                      comm=self.mesh.comm)
+            syncFlush(comm=self.mesh.comm)
 
         # Receive all responses
         with timed_region("ResultExchange"):
@@ -348,10 +355,11 @@ class PointCloud(object):
 
             self._perform_sparse_communication_round(recv_results, point_responses)
 
-        syncPrint("[%d] Point location request results: %s" % (self.mesh.comm.rank,
-                                                               str(recv_results)),
-                  comm=self.mesh.comm)
-        syncFlush(comm=self.mesh.comm)
+        with timed_region("DebugPrintLocateInfoD"):
+            syncPrint("[%d] Point location request results: %s" % (self.mesh.comm.rank,
+                                                                   str(recv_results)),
+                      comm=self.mesh.comm)
+            syncFlush(comm=self.mesh.comm)
 
         # Process and return results.
         with timed_region("ResultProcessing"):
@@ -368,16 +376,18 @@ class PointCloud(object):
                     if loc_rank == -1 or rank < loc_rank:
                         located_elements[i, :] = (rank, result[idx])
 
-        syncPrint("[%d] Located elements: %s" % (self.mesh.comm.rank,
-                                                 located_elements.tolist()),
-                  comm=self.mesh.comm)
-        syncFlush(comm=self.mesh.comm)
+        with timed_region("DebugPrintLocateInfoE"):
+            syncPrint("[%d] Located elements: %s" % (self.mesh.comm.rank,
+                                                     located_elements.tolist()),
+                      comm=self.mesh.comm)
+            syncFlush(comm=self.mesh.comm)
 
-        points_not_found_indices = np.where(located_elements[:, 1] == -1)[0]
-        self.points_not_found_indices = points_not_found_indices
-        if len(points_not_found_indices) > 0:
-            logger.warning('[%2d/%2d] PointCloud._locate_mesh_elements: %d points not located!'%(
-                self.mesh.comm.rank, self.mesh.comm.size, len(points_not_found_indices)))
+        with timed_region("GetNotFoundInfo"):
+            points_not_found_indices = np.where(located_elements[:, 1] == -1)[0]
+            self.points_not_found_indices = points_not_found_indices
+            if len(points_not_found_indices) > 0:
+                logger.warning('[%2d/%2d] PointCloud._locate_mesh_elements: %d points not located!'%(
+                    self.mesh.comm.rank, self.mesh.comm.size, len(points_not_found_indices)))
         # PETSc.Sys.syncFlush()
 
         return located_elements
