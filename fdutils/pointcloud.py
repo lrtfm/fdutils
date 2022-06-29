@@ -43,7 +43,7 @@ def syncPrint(*args, **kwargs):
     """
     if logger.isEnabledFor(logging.DEBUG):
         PETSc.Sys.syncPrint(*args, **kwargs)
-        
+
 @PETSc.Log.EventDecorator()
 def Print(*args, **kwargs):
     if logger.isEnabledFor(logging.DEBUG):
@@ -61,14 +61,14 @@ def syncFlush(*args, **kwargs):
 class PointCloud(object):
     """Store points for repeated location in a mesh. Facilitates lookup and evaluation
     at these point locations.
-    
+
     Most code of this class are copied form firedrake repo.
-    
-    This class is used to evaluate functions for many times on 
-    a group of points. It works in case that you give different points 
+
+    This class is used to evaluate functions for many times on
+    a group of points. It works in case that you give different points
     on different mpi rank. This is an alternative solution before
     `VertexOnlyMesh` in Firedrake supporting this function.
-    
+
     Exmaple code:
         ```
         from firedrake import *
@@ -88,7 +88,7 @@ class PointCloud(object):
         v2 = pc.evaluate(f2)
         ```
     """
-    
+
     def __init__(self, mesh, points, tolerance=None, *args, **kwargs):
         """Initialise the PointCloud.
 
@@ -166,7 +166,7 @@ class PointCloud(object):
 
         min_c = coords.dat.data_ro_with_halos.min(axis=0)
         max_c = coords.dat.data_ro_with_halos.max(axis=0)
-        
+
         # Format: [min_x, min_y, min_z, max_x, max_y, max_z]
         local = np.concatenate([min_c, max_c])
 
@@ -181,7 +181,7 @@ class PointCloud(object):
         # Arrays must be contiguous.
         min_bounds = np.ascontiguousarray(min_bounds)
         max_bounds = np.ascontiguousarray(max_bounds)
-        
+
         # Build spatial indexes from bounds.
         return spatialindex.from_regions(min_bounds, max_bounds)
 
@@ -398,9 +398,9 @@ class PointCloud(object):
         loc = self.locations
         rank = self.mesh.comm.rank
         size = self.mesh.comm.size
-        
+
         local_info = None
-        
+
         rank2cells = {}
         n_all = 0
         for i in range(size):
@@ -427,7 +427,7 @@ class PointCloud(object):
             # each process.
             recv_cells_buffers = {}
             recv_points_buffers = {}
-            
+
             for i in range(0, len(from_ranks)):
                 recv_cells_buffers[from_ranks[i]] = np.empty(from_data[i], dtype=IntType)
                 recv_points_buffers[from_ranks[i]] = np.empty(
@@ -444,7 +444,7 @@ class PointCloud(object):
         rank2cells[rank] = local_info
         recv_cells_buffers[rank] = local_info[1]
         recv_points_buffers[rank] = self.points[local_info[0], :]
-        
+
         return (recv_cells_buffers, recv_points_buffers, rank2cells)
 
     @PETSc.Log.EventDecorator()
@@ -452,26 +452,26 @@ class PointCloud(object):
         """Evaluate a function at the located points.
         :arg function: The function to evaluate.
         """
-        
+
         if function.ufl_domain() != self.mesh:
             raise('The function must be defined on the mesh of this PointCloud!')
-        
+
         rank = self.mesh.comm.rank
         size = self.mesh.comm.size
-        
+
         # must do this!
         from pyop2 import op2
         function.dat.global_to_local_begin(op2.READ)
         function.dat.global_to_local_end(op2.READ)
-        
+
         recv_cells_buffers, recv_points_buffers, rank2cells = self.evaluate_info
-        
+
         with timed_region("Eval"):
             values = {}
             for r, cells in recv_cells_buffers.items():
                 ps = recv_points_buffers[r]
                 values[r] = batch_eval(function, cells, ps, tolerance=self.tolerance)
-                
+
         with timed_region("PrepareBuffers"):
             n = len(self.points)
             m = np.prod(function.ufl_shape, dtype=np.int64)
@@ -481,14 +481,14 @@ class PointCloud(object):
                 ret[rank2cells[rank][0]] = values[rank]
             else:
                 ret[rank2cells[rank][0], :] = values[rank]
-            
+
             recv_values_buffers = {}
             for r, pair in rank2cells.items():
                 if r != rank:
                     recv_values_buffers[r] = np.empty(array_shape(len(pair[0])), dtype=ScalarType)
-            
+
             values.pop(rank)
-        
+
         with timed_region("EvalResultExchange"):
             self._perform_sparse_communication_round(recv_values_buffers, values)
 
@@ -497,7 +497,7 @@ class PointCloud(object):
                 ret[rank2cells[r][0]] = v
             else:
                 ret[rank2cells[r][0], :] = v
-        
+
         with timed_region("Callback"):
             # Notes: Make sure every process call callback for parallell case.
             #        How to do it more reasonable?
@@ -521,11 +521,11 @@ class PointCloud(object):
                     ret[self.points_not_found_indices, :] = callback(points_not_found)
 
         return ret
-    
+
 @PETSc.Log.EventDecorator()
 def batch_eval(function, cells, xs, tolerance=None):
     r"""Helper function to evaluate at points."""
-    
+
     n = IntType.type(len(cells))
     m = np.prod(function.ufl_shape, dtype=np.int64)
     buf = np.zeros(n if m == 1 else [n, m], dtype=ScalarType)
@@ -538,12 +538,12 @@ def batch_eval(function, cells, xs, tolerance=None):
     if err > 0:
         # PETSc.Sys.syncPrint
         logger.warning('[%d]: %d of %d points are located in wrong place!'%(function.comm.rank, err, n))
-        
+
     if err == -1:
         raise PointNotInDomainError('We won\'t be here!')
-        
+
     return buf
-    
+
 @PETSc.Log.EventDecorator()
 def _c_evaluate_pointscloud(function, tolerance=None):
     cache = function.__dict__.setdefault("_c_evaluate_pointscloud_cache", {})
@@ -551,21 +551,21 @@ def _c_evaluate_pointscloud(function, tolerance=None):
         return cache[tolerance]
     except KeyError:
         result = make_c_evaluate(function, tolerance=tolerance)
-        result.argtypes = [POINTER(_CFunction), 
+        result.argtypes = [POINTER(_CFunction),
                            c_int,
                            POINTER(c_int),
-                           POINTER(c_double), 
+                           POINTER(c_double),
                            c_void_p]
         result.restype = c_int
         return cache.setdefault(tolerance, result)
-        
+
 @PETSc.Log.EventDecorator()
 def make_c_evaluate(function, c_name="evaluate_points", ldargs=None, tolerance=None):
     r"""Generates, compiles and loads a C function to evaluate the
     given Firedrake :class:`Function`."""
 
     from os import path
-    
+
     from pyop2 import compilation, op2
     from pyop2.utils import get_petsc_dir
     # https://github.com/firedrakeproject/firedrake/pull/2235
@@ -574,10 +574,10 @@ def make_c_evaluate(function, c_name="evaluate_points", ldargs=None, tolerance=N
         from pyop2.sequential import generate_single_cell_wrapper
     except ModuleNotFoundError:
         from pyop2.parloop import generate_single_cell_wrapper
-    
+
     from firedrake import utils
     import firedrake.pointquery_utils as pq_utils
-    
+
     from fdutils.pointeval_utils import compile_element
     from fdutils.meshpatch import src_locate_cell
 
