@@ -133,34 +133,35 @@ def compile_element(expression, coordinates, parameters=None):
 static inline void wrap_evaluate(%(scalar_type)s* const result, %(scalar_type)s* const X, %(IntType)s const start, %(IntType)s const end%(layers_arg)s,
     %(scalar_type)s const *__restrict__ coords, %(scalar_type)s const *__restrict__ f, %(wrapper_map_args)s);
 
+/*
+  Reference: firedrake/pointeval_utils.py
+  https://github.com/firedrakeproject/firedrake/blob/dc535bc67b65683cd7cb33b954a6e6107af49b28/firedrake/pointeval_utils.py#L135
+*/
 int evaluate_points(struct Function *f, %(IntType)s n, %(IntType)s * cells, double *xs, %(scalar_type)s *results)
 {
-    // Data 2021-08-03
-    // Modified by Zongze Yang yangzongze@gmail.com
-    //
     struct ReferenceCoords reference_coords;
-    // %(IntType)s cell = locate_cell(f, x, %(geometric_dimension)d, &to_reference_coords, &to_reference_coords_xtr, &reference_coords);
-    // if (cell == -1) {
-    //     return -1;
-    // }
-// 
-    // if (!result) {
-    //     return 0;
-    // }
-    
+
 #if %(extruded_define)s
+    %(IntType)s cell=-1;
     int layers[2] = {0, 0};
     int nlayers = f->n_layers;
-    layers[1] = cell %% nlayers + 2;
-    cell = cell / nlayers;
 #endif
-    
+
     int s = 0;
+    int layer = 0;
     for (int i = 0; i < n; i++) {
-        s += to_reference_coords(&reference_coords, f, cells[i], &xs[i*%(geometric_dimension)d]);
-        wrap_evaluate(&results[i*%(num_per_node)d], reference_coords.X, cells[i], cells[i]+1%(layers)s, f->coords, f->f, %(map_args)s);
+#if %(extruded_define)s
+        cell = cells[i] / nlayers;
+        layer = cells[i] %% nlayers;
+        layers[1] = layer + 2;
+        s += to_reference_coords_xtr(&reference_coords, f, cell, layer, &xs[i*%(geometric_dimension)d]);
+#else
+        cell = cells[i]
+        s += to_reference_coords(&reference_coords, f, cell, &xs[i*%(geometric_dimension)d]);
+#endif
+        wrap_evaluate(&results[i*%(num_per_node)d], reference_coords.X, cell, cell+1%(layers)s, f->coords, f->f, %(map_args)s);
     }
-    
+
     return n - s;
 }
 """
