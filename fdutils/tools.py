@@ -52,7 +52,7 @@ def get_nodes_coords(fun):
             eles += sub
         else:
             if not ((ele.family() == 'Lagrange' and ele.degree() > 0) or
-                (ele.family() == 'Discontinuous Lagrange' and ele.degree == 0)):
+                (ele.family() == 'Discontinuous Lagrange' and ele.degree() == 0)):
                 raise Exception(f'Do not support element type: {ele}')
 
     if element.family() == 'TensorProductElement':
