@@ -142,13 +142,13 @@ int evaluate_points(struct Function *f, %(IntType)s n, %(IntType)s * cells, doub
     struct ReferenceCoords reference_coords;
 
 #if %(extruded_define)s
-    %(IntType)s cell=-1;
     int layers[2] = {0, 0};
     int nlayers = f->n_layers;
 #endif
 
     int s = 0;
     int layer = 0;
+    %(IntType)s cell=-1;
     for (int i = 0; i < n; i++) {
 #if %(extruded_define)s
         cell = cells[i] / nlayers;
@@ -156,7 +156,7 @@ int evaluate_points(struct Function *f, %(IntType)s n, %(IntType)s * cells, doub
         layers[1] = layer + 2;
         s += to_reference_coords_xtr(&reference_coords, f, cell, layer, &xs[i*%(geometric_dimension)d]);
 #else
-        cell = cells[i]
+        cell = cells[i];
         s += to_reference_coords(&reference_coords, f, cell, &xs[i*%(geometric_dimension)d]);
 #endif
         wrap_evaluate(&results[i*%(num_per_node)d], reference_coords.X, cell, cell+1%(layers)s, f->coords, f->f, %(map_args)s);
