@@ -6,8 +6,9 @@ modules:
 	@python setup.py build_ext --inplace > build.log 2>&1 || cat build.log
 
 develop: clean
-	@echo "    Develop the extension "
-	@python setup.py develop > develop.log 2>&1 || cat develop.log
+	@echo "    Develop the extension"
+	@python -m pip install -r requirements.txt > install_requirements.log 2>&1 || cat install_requirements.log
+	@python -m pip install -vvv -e . > develop.log 2>&1 || cat develop.log
 
 clean:
 	@echo "    Cleaning extension modules"

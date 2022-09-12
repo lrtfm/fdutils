@@ -1,3 +1,5 @@
+# cython: language_level=3
+
 # copy from file firedrake/cython/dmcommon.pyx
 import cython
 import numpy as np
