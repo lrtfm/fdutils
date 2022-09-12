@@ -43,6 +43,7 @@ def get_nodes_coords(fun):
     mesh = fun.ufl_domain()
     element = fun.ufl_element()
     degree = element.degree()
+    degree_coord = mesh.coordinates.ufl_element().degree()
 
     eles = [element]
     while len(eles):
@@ -58,7 +59,7 @@ def get_nodes_coords(fun):
     if element.family() == 'TensorProductElement':
         cells = element.cell().sub_cells()
         assert len(degree) == 2
-        if degree[0] == 1 and degree[1] == 1:
+        if degree[0] == 1 and degree[1] == 1 and degree_coord == 1:
             points = mesh.coordinates.dat.data_ro.copy()
         else:
             ele0 = FiniteElement("CG" if degree[0] > 0 else "DG", cells[0], degree[0])
@@ -69,7 +70,7 @@ def get_nodes_coords(fun):
             interp_coordinates.interpolate(mesh.coordinates)
             points = interp_coordinates.dat.data_ro.copy()
     else:
-        if degree == 1:
+        if degree == 1 and degree_coord == 1:
             points = mesh.coordinates.dat.data_ro.copy()
         else:
             C = VectorFunctionSpace(mesh, 'CG' if degree > 0 else 'DG', degree)
