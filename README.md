@@ -28,8 +28,8 @@
     
     This class is used to evaluate functions for many times on 
     a group of points. It works in case that you give different points 
-    on different mpi rank. This is an alternative solution before
-    `VertexOnlyMesh` in Firedrake supporting this function.
+    on different mpi ranks. This is an alternative solution before
+    `VertexOnlyMesh` in Firedrake supporting this feature.
     
     Exmaple code:
     ```
@@ -57,8 +57,6 @@
     
 3. `PointVOM`: A wrapper for `VortexOnlyMesh` to provide the same interface
     with `PointCloud`.
-    
-    --Do not use this unless you know what you are doing.--
     
 ### Methods to compute errors of functions defined on different meshes
 
