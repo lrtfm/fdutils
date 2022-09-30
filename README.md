@@ -31,23 +31,29 @@
     on different mpi ranks. This is an alternative solution before
     `VertexOnlyMesh` in Firedrake supporting this feature.
     
-    Exmaple code:
+    Example code on interpolating function `f1` on mesh `m1` to function `f2` on mesh `m2` 
     ```
-    from firedrake import *
+    import firedrake as fd
     from fdutils import PointCloud
+    from fdutils.tools import get_nodes_coords
+    import matplotlib.pyplot as plt
 
-    mesh = RectangleMesh(10, 10, 1, 1)
-    x, y = SpatialCoordinate(mesh)
-    V = FunctionSpace(mesh, 'CG', 1)
-    f1 = Function(V).interpolate(x**2 + y**2)
-    f2 = Function(V).interpolate(sin(x) + y**2)
+    m1 = fd.RectangleMesh(10, 10, 1, 1)
+    V1 = fd.FunctionSpace(m1, 'CG', 2)
+    x, y = fd.SpatialCoordinate(m1)
+    f1 = fd.Function(V1).interpolate(x**2 + y**2)
 
-    mesh2 = RectangleMesh(20, 20, 1, 1)
-    points = mesh2.coordinates.dat.data_ro
+    m2 = fd.RectangleMesh(20, 20, 1, 1)
+    V2 = fd.FunctionSpace(m2, 'CG', 3)
+    f2 = fd.Function(V2)
 
-    pc = PointCloud(mesh, points, tolerance=1e-12)
-    v1 = pc.evaluate(f1)
-    v2 = pc.evaluate(f2)
+    points = get_nodes_coords(f2)
+    pc = PointCloud(m1, points, tolerance=1e-12)
+    f2.dat.data_with_halos[:] = pc.evaluate(f1)
+
+    fig, ax = plt.subplots(1, 2, figsize=[8, 4], subplot_kw=dict(projection='3d'))
+    fd.trisurf(f1, axes=ax[0])
+    fd.trisurf(f2, axes=ax[1])
     ```
     
 2. `PointArray`: Another class to help evaluate functions on points.
