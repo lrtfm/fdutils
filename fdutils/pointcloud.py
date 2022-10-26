@@ -18,6 +18,17 @@ from ctypes import POINTER, c_int, c_double, c_void_p
 from firedrake.function import _CFunction
 import firedrake.utils as utils
 
+
+if hasattr(MPI, '__TypeDict__'):
+    MPI_INT_TYPE = MPI.__TypeDict__[np.dtype(IntType).char]
+    MPI_SCALAR_TYPE = MPI.__TypeDict__[np.dtype(ScalarType).char]
+elif hasattr(MPI, '_typedict'):
+    MPI_INT_TYPE = MPI._typedict[np.dtype(IntType).char]
+    MPI_SCALAR_TYPE = MPI._typedict[np.dtype(ScalarType).char]
+else:
+    raise ValueError("Don't know how to create datatype for %r,%r", IntType, ScalarType)
+
+
 try:
     from fdutils.evalpatch import build_two_sided
 except ModuleNotFoundError:
@@ -304,7 +315,7 @@ class PointCloud(object):
             # The output array `from_ranks` holds the ranks of the processes that will be
             # sending points, and the corresponding element in the `from_data` array
             # specifies the number of points that will be sent.
-            from_ranks, from_data = build_two_sided(self.mesh.comm, 1, MPI.INT, to_ranks,
+            from_ranks, from_data = build_two_sided(self.mesh.comm, 1, MPI_INT_TYPE, to_ranks,
                                                     to_data)
 
             # Create dictionary to hold all receive buffers for point requests from
@@ -420,7 +431,7 @@ class PointCloud(object):
                     to_ranks[i] = r
                     to_data[i] = len(pair[0])
 
-            from_ranks, from_data = build_two_sided(self.mesh.comm, 1, MPI.INT, to_ranks,
+            from_ranks, from_data = build_two_sided(self.mesh.comm, 1, MPI_INT_TYPE, to_ranks,
                                                     to_data)
 
             # Create dictionary to hold all receive buffers for point requests from
