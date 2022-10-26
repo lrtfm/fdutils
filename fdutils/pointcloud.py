@@ -14,9 +14,15 @@ from pyop2.profiling import timed_region
 import logging
 
 from ctypes import POINTER, c_int, c_double, c_void_p
+c_petsc_int = np.ctypeslib.as_ctypes_type(IntType)
 
 from firedrake.function import _CFunction
 import firedrake.utils as utils
+
+from mpi4py.util.dtlib import to_numpy_dtype as mpi_to_numpy_dtype
+# this should same with PetscMPIInt: i.e. int32
+# Ref: https://petsc.org/release/docs/manualpages/Sys/PetscMPIInt/
+MPIIntType = mpi_to_numpy_dtype(MPI.INT)
 
 try:
     from fdutils.evalpatch import build_two_sided
@@ -28,6 +34,7 @@ except:
 
 __all__ = ["PointCloud"]
 
+
 # TODO: move to a file?
 logger = logging.getLogger("fdutils")
 for handler in logger.handlers:
@@ -35,6 +42,7 @@ for handler in logger.handlers:
 handler = logging.StreamHandler()
 handler.setFormatter(logging.Formatter(fmt="%(name)s:%(levelname)s %(message)s"))
 logger.addHandler(handler)
+
 
 @PETSc.Log.EventDecorator()
 def syncPrint(*args, **kwargs):
@@ -291,8 +299,8 @@ class PointCloud(object):
             # communication round.
 
             # Create input arrays from candidates dictionary.
-            to_ranks = np.zeros(len(local_candidates), dtype=IntType)
-            to_data = np.zeros(len(local_candidates), dtype=IntType)
+            to_ranks = np.zeros(len(local_candidates), dtype=MPIIntType)
+            to_data = np.zeros(len(local_candidates), dtype=MPIIntType)
             for i, (rank, points) in enumerate(local_candidates.items()):
                 to_ranks[i] = rank
                 to_data[i] = len(points)
@@ -413,8 +421,8 @@ class PointCloud(object):
                 rank2cells[i] = (index, cells)
 
         with timed_region("EvalPointExchange"):
-            to_ranks = np.zeros(len(rank2cells), dtype=IntType)
-            to_data = np.zeros(len(rank2cells), dtype=IntType)
+            to_ranks = np.zeros(len(rank2cells), dtype=MPIIntType)
+            to_data = np.zeros(len(rank2cells), dtype=MPIIntType)
             for i, (r, pair) in enumerate(rank2cells.items()):
                 if r != rank:
                     to_ranks[i] = r
@@ -474,7 +482,7 @@ class PointCloud(object):
 
         with timed_region("PrepareBuffers"):
             n = len(self.points)
-            m = np.prod(function.ufl_shape, dtype=np.int64)
+            m = np.prod(function.ufl_shape, dtype=IntType)
             array_shape = lambda number: number if m == 1 else [number, m]
             ret = np.zeros(array_shape(n), dtype=ScalarType)
             if m == 1:
@@ -527,12 +535,13 @@ def batch_eval(function, cells, xs, tolerance=None):
     r"""Helper function to evaluate at points."""
 
     n = IntType.type(len(cells))
-    m = np.prod(function.ufl_shape, dtype=np.int64)
-    buf = np.zeros(n if m == 1 else [n, m], dtype=ScalarType)
-    cells = np.array(cells, dtype=IntType)
+    m = np.prod(function.ufl_shape, dtype=IntType)
+    buf = np.ascontiguousarray(np.zeros(n if m == 1 else [n, m], dtype=ScalarType))
+    xs = np.ascontiguousarray(xs)
+    cells = np.ascontiguousarray(np.array(cells, dtype=IntType))
     err = _c_evaluate_pointscloud(function, tolerance=tolerance)(function._ctypes,
                                                 n,
-                                                cells.ctypes.data_as(POINTER(c_int)),
+                                                cells.ctypes.data_as(POINTER(c_petsc_int)),
                                                 xs.ctypes.data_as(POINTER(c_double)),
                                                 buf.ctypes.data_as(c_void_p))
     if err > 0:
@@ -552,11 +561,11 @@ def _c_evaluate_pointscloud(function, tolerance=None):
     except KeyError:
         result = make_c_evaluate(function, tolerance=tolerance)
         result.argtypes = [POINTER(_CFunction),
-                           c_int,
-                           POINTER(c_int),
+                           c_petsc_int,
+                           POINTER(c_petsc_int),
                            POINTER(c_double),
                            c_void_p]
-        result.restype = c_int
+        result.restype = c_petsc_int
         return cache.setdefault(tolerance, result)
 
 @PETSc.Log.EventDecorator()

@@ -1,10 +1,11 @@
 from firedrake.utility_meshes import UnitSquareMesh
 from firedrake.functionspace import FunctionSpace, VectorFunctionSpace
 from firedrake.function import Function
-
+from firedrake.petsc import PETSc
 from ufl.geometry import SpatialCoordinate 
-
 from fdutils import tools
+import numpy as np
+
 
 def get_fun(n, degree=None, fun=None):
     degree = degree or 2
@@ -48,3 +49,21 @@ for method in ['at', 'vom', 'pc']:
 errs = {}
 for name, handle in error_handles.items():
     errs[name] = handle()
+
+for comp in ['Cauchy', 'Reference']:
+    a = np.allclose(errs['at' + sep + comp], errs['vom' + sep + comp])
+    b = np.allclose(errs['at' + sep + comp], errs['pc' + sep + comp])
+    if a and b:
+        PETSc.Sys.Print(f'Test for {comp} OK')
+    else:
+        if not a:
+            PETSc.Sys.Print(f'Test for at-vom Fail:')
+            PETSc.Sys.Print("*"*80)
+            PETSc.Sys.Print(errs['at' + sep + comp], errs['vom' + sep + comp])
+            PETSc.Sys.Print("*"*80)
+        if not b:
+            PETSc.Sys.Print(f'Test for at-pc Fail')
+            PETSc.Sys.Print("*"*80)
+            PETSc.Sys.Print(errs['at' + sep + comp], errs['pc' + sep + comp])
+            PETSc.Sys.Print("*"*80)
+
