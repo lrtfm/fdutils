@@ -139,7 +139,7 @@ static inline void wrap_evaluate(%(scalar_type)s* const result, %(scalar_type)s*
   Reference: firedrake/pointeval_utils.py
   https://github.com/firedrakeproject/firedrake/blob/dc535bc67b65683cd7cb33b954a6e6107af49b28/firedrake/pointeval_utils.py#L135
 */
-int evaluate_points(struct Function *f, %(IntType)s n, %(IntType)s * cells, double *xs, %(scalar_type)s *results)
+%(IntType)s evaluate_points(struct Function *f, %(IntType)s n, %(IntType)s * cells, double *xs, %(scalar_type)s *results)
 {
     struct ReferenceCoords reference_coords;
 
@@ -148,8 +148,8 @@ int evaluate_points(struct Function *f, %(IntType)s n, %(IntType)s * cells, doub
     int nlayers = f->n_layers;
 #endif
 
-    int s = 0;
     int layer = 0;
+    %(IntType)s s = 0;
     %(IntType)s cell=-1;
     for (int i = 0; i < n; i++) {
 #if %(extruded_define)s

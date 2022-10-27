@@ -46,7 +46,7 @@ def locate_cells(self, points, tolerance=None):
             raise ValueError("Provided points have non-zero imaginary part")
         points = points.real.copy()
     npoint, _ = points.shape
-    cells = np.empty(npoint, dtype=IntType)
+    cells = np.empty(npoint, dtype=np.intc) # TODO: make the locator use IntType?
     self._c_locators(tolerance=tolerance)(self.coordinates._ctypes,
                                          points.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
                                          npoint, # TODO: is this right?
