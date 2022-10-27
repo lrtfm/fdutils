@@ -43,7 +43,6 @@ handler = logging.StreamHandler()
 handler.setFormatter(logging.Formatter(fmt="%(name)s:%(levelname)s %(message)s"))
 logger.addHandler(handler)
 
-
 @PETSc.Log.EventDecorator()
 def syncPrint(*args, **kwargs):
     """Perform a PETSc syncPrint operation with given arguments if the logging level is
@@ -341,7 +340,8 @@ class PointCloud(object):
 
             # Evaluate results.
             for rank, points_buffers in recv_points_buffers.items():
-                point_responses[rank] = self.mesh.locate_cells(points_buffers, tolerance=tolerance)
+                point_responses[rank] = np.array(
+                    self.mesh.locate_cells(points_buffers, tolerance=tolerance), dtype=IntType)
                 self.statistics["num_points_evaluated"] += len(points_buffers)
                 self.statistics["num_points_found"] += \
                     np.count_nonzero(point_responses[rank] != -1)
@@ -536,9 +536,8 @@ def batch_eval(function, cells, xs, tolerance=None):
 
     n = IntType.type(len(cells))
     m = np.prod(function.ufl_shape, dtype=IntType)
-    buf = np.ascontiguousarray(np.zeros(n if m == 1 else [n, m], dtype=ScalarType))
-    xs = np.ascontiguousarray(xs)
-    cells = np.ascontiguousarray(np.array(cells, dtype=IntType))
+    buf = np.zeros(n if m == 1 else [n, m], dtype=ScalarType)
+    # cells = np.ascontiguousarray(np.array(cells, dtype=IntType))
     err = _c_evaluate_pointscloud(function, tolerance=tolerance)(function._ctypes,
                                                 n,
                                                 cells.ctypes.data_as(POINTER(c_petsc_int)),
