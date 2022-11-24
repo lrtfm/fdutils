@@ -84,7 +84,7 @@ else:
             PETSc.Sys.Print(f'Test for {comp} OK')
         else:
             if not a:
-                PETSc.Sys.Print(f'Test for at-vom Fail:')
+                PETSc.Sys.Print(f'Test for at-vom Failed:')
                 PETSc.Sys.Print("*"*80)
                 PETSc.Sys.Print(errs['at' + sep + comp], errs['vom' + sep + comp])
                 PETSc.Sys.Print("*"*80)

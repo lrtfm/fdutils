@@ -103,7 +103,7 @@ class PointCloud(object):
         :arg points: An N x mesh.geometric_dimension() array of point locations.
         """
         self.mesh = mesh
-        points = np.asarray(points)
+        points = np.asarray(points, dtype=ScalarType)
         if utils.complex_mode:
             if not np.allclose(points.imag, 0):
                 raise ValueError("Provided points have non-zero imaginary part")
@@ -116,9 +116,6 @@ class PointCloud(object):
         if dim != mesh.geometric_dimension():
             raise ValueError("Points must be %d-dimensional, (got %d)" %
                              (mesh.geometric_dimension(), dim))
-
-        # Build spatial index of processes for point location.
-        self.processes_index = self._build_processes_spatial_index()
 
         # Initialise dictionary to store location statistics for evaluation.
         self.statistics = OrderedDict()
@@ -152,45 +149,16 @@ class PointCloud(object):
         rank_cell_pairs = self._locate_mesh_elements(tolerance=self.tolerance)
         return np.array(rank_cell_pairs, dtype=IntType)
 
-    @PETSc.Log.EventDecorator()
-    def _build_processes_spatial_index(self):
-        """Build a spatial index of processes using the bounding boxes of each process.
-        This will be used to determine which processes may hold a given point.
-
-        :returns: A libspatialindex spatial index structure.
-        """
-        from firedrake import function
-        from firedrake.utils import RealType
-        if utils.complex_mode:
-            if not np.allclose(self.mesh.coordinates.dat.data_ro.imag, 0):
-                raise ValueError("Coordinate field has non-zero imaginary part")
-            coords = function.Function(self.mesh.coordinates.function_space(),
-                                       val=self.mesh.coordinates.dat.data_ro_with_halos.real.copy(),
-                                       dtype=RealType)
-        else:
-            coords = self.mesh.coordinates
-
-
-        min_c = coords.dat.data_ro_with_halos.min(axis=0)
-        max_c = coords.dat.data_ro_with_halos.max(axis=0)
-
-        # Format: [min_x, min_y, min_z, max_x, max_y, max_z]
-        local = np.concatenate([min_c, max_c])
-
-        global_ = np.empty(len(local) * self.mesh.comm.size, dtype=local.dtype)
-        self.mesh.comm.Allgather(local, global_)
-
-        # Create lists containing the minimum and maximum bounds of each process, where
-        # the index in each list is the rank of the process.
-        min_bounds, max_bounds = global_.reshape(self.mesh.comm.size, 2,
-                                                 len(local) // 2).swapaxes(0, 1)
-
-        # Arrays must be contiguous.
-        min_bounds = np.ascontiguousarray(min_bounds)
-        max_bounds = np.ascontiguousarray(max_bounds)
-
-        # Build spatial indexes from bounds.
-        return spatialindex.from_regions(min_bounds, max_bounds)
+    def clear_locations(self):
+        """Reset the :attr:`locations` on this mesh geometry.
+        Use this if you move the mesh (for example by reassigning to
+        the coordinate field)."""
+        # TODO: should call it here?
+        self.mesh.clear_spatial_index()
+        try:
+            del self.locations
+        except AttributeError:
+            pass
 
     @PETSc.Log.EventDecorator()
     def _get_candidate_processes(self, point):
@@ -200,7 +168,7 @@ class PointCloud(object):
 
         :returns: A numpy array of candidate processes.
         """
-        candidates = spatialindex.bounding_boxes(self.processes_index, point)
+        candidates = spatialindex.bounding_boxes(self.mesh.processes_spatial_index, point)
         return candidates[candidates != self.mesh.comm.rank]
 
     @PETSc.Log.EventDecorator()
