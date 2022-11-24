@@ -2,13 +2,12 @@ import os
 import sys
 import ctypes
 import numpy as np
-from pyop2.datatypes import IntType, RealType, ScalarType
-
 import ufl
-from firedrake import utils
-from firedrake.mesh import MeshGeometry, spatialindex
+import firedrake as fd
 import firedrake.utils as utils
 import firedrake.pointquery_utils as pointquery_utils
+from firedrake.mesh import MeshGeometry, spatialindex
+from pyop2.datatypes import IntType, RealType, ScalarType
 
 __all__ = []
 
@@ -215,3 +214,117 @@ MeshGeometry._c_locators = _c_locators
 MeshGeometry._inner_spatial_index = _inner_spatial_index
 MeshGeometry.spatial_index = spatial_index
 MeshGeometry.processes_spatial_index = processes_spatial_index
+
+
+# for load high order gmsh file
+def getCoordinateFESpaceOrder(dm):
+    cdm = dm.getCoordinateDM()
+    kls, _ = cdm.getField(0)
+    if kls.getClassName() == 'PetscFE':
+        p = int(kls.getName()[1:])
+    else:
+        p = 1
+    return p
+
+
+def callback(mesh):
+
+    """Finish initialisation."""
+    del mesh._callback
+
+    mesh.topology.init()
+
+    cell_closure = mesh.cell_closure
+    cell_sec = mesh._cell_numbering
+
+    coordinates_fs = fd.functionspace.FunctionSpace(mesh.topology, mesh.ufl_coordinate_element())
+    sec = coordinates_fs.dm.getDefaultSection()
+    entity_permutations = coordinates_fs.finat_element.entity_permutations
+
+    cell_node_list = coordinates_fs.cell_node_list
+
+    dm = mesh.topology.topology_dm
+    cdm = dm.getCoordinateDM()
+    dim = dm.getCoordinateDim()
+    csec = dm.getCoordinateSection()
+    coords_gvec = dm.getCoordinates()
+    cs, ce = dm.getHeightStratum(0)
+
+    ncell = ce - cs
+    ndof_per_ele = len(entity_permutations[dim][0][0])
+    coordinates_data = np.zeros([ncell*ndof_per_ele, dim], dtype=ScalarType)
+    #                [0, 1, 2, 3, 23, 13, 12, 03, 02, 01]
+    magic = np.array([0, 2, 5, 9,  8,  7,  4,  6,  3,  1], dtype=IntType)
+    maps = {
+        0: 0,
+        1: 2,
+        2: 5,
+        3: 9,
+        (2, 3): 8,
+        (1, 3): 7,
+        (1, 2): 4,
+        (0, 3): 6,
+        (0, 2): 3,
+        (0, 1): 1,
+    }
+    perm = np.zeros(len(maps), dtype=IntType)
+
+    offset = 0
+    for i in range(cs, ce):
+        cell = cell_sec.getOffset(i)
+        ccoords = cdm.getVecClosure(csec, coords_gvec, i)
+        cl = dm.getTransitiveClosure(i)
+
+        index_a = cl[0][-4:]
+        index_a[0], index_a[1] = index_a[1], index_a[0]
+        index_b = cell_closure[cell][:4]
+        index = [np.where(index_a == _)[0][0] for _ in index_b]
+
+        # index_a[index] == index_b
+        for j, key in enumerate(maps.keys()):
+            if isinstance(key, tuple):
+                if index[key[0]] > index[key[1]]:
+                    _i = (index[key[1]], index[key[0]])
+                else:
+                    _i = (index[key[0]], index[key[1]])
+                perm[j] = maps[_i]
+            else:
+                perm[j] = maps[index[key]]
+
+        cnl = cell_node_list[cell]
+        coordinates_data[cnl, :] = ccoords.reshape([-1, dim])[perm, :]
+
+    # Finish the initialisation of mesh topology
+    coordinates = fd.function.CoordinatelessFunction(coordinates_fs, val=coordinates_data, name=mesh.name + "_coordinates")
+
+    mesh.__init__(coordinates)
+
+
+def make_mesh_from_mesh_topology(topology, name):
+    # Construct coordinate element
+    # TODO: meshfile might indicates higher-order coordinate element
+    cell = topology.ufl_cell()
+    geometric_dim = topology.topology_dm.getCoordinateDim()
+    cell = cell.reconstruct(geometric_dimension=geometric_dim)
+    topology_dim = topology.topology_dm.getDimension()
+
+    p = getCoordinateFESpaceOrder(topology.topology_dm)
+    if p == 1:
+        element = ufl.VectorElement("Lagrange", cell, 1)
+    elif p == 2:
+        element = ufl.VectorElement("DG", cell, p)
+    else:
+        Exception('Can not load mesh with order p > 2 for now!')
+    # Create mesh object
+    mesh = fd.mesh.MeshGeometry.__new__(fd.mesh.MeshGeometry, element)
+    mesh._init_topology(topology)
+    mesh.name = name
+    if p == 2:
+        if geometric_dim == 3 and topology_dim == 3:
+            mesh._callback = callback
+        else:
+            Exception('Only can load second order mesh for dim == 3 now!')
+    return mesh
+
+
+fd.mesh.make_mesh_from_mesh_topology = make_mesh_from_mesh_topology

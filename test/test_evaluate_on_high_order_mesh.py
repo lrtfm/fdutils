@@ -36,7 +36,7 @@ def make_high_order_mesh_simple(m, p, tag2r=None):
 opts = PETSc.Options()
 bbox_relax_factor = opts.getReal('bbox_relax_factor', default=0.01)
 
-mesh_orig = Mesh(os.path.join(os.path.dirname(__file__), "disk.msh"))
+mesh_orig = Mesh(os.path.join(os.path.dirname(__file__), "sphere.msh"))
 mesh = make_high_order_mesh_simple(mesh_orig, 3, tag2r={1: 1, 2: 1.3})
 mesh.bbox_relax_factor = bbox_relax_factor
 
