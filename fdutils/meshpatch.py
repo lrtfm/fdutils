@@ -7,6 +7,7 @@ from pyop2.datatypes import IntType, RealType, ScalarType
 import ufl
 from firedrake import utils
 from firedrake.mesh import MeshGeometry, spatialindex
+from firedrake.logging import info_red
 import firedrake.utils as utils
 import firedrake.pointquery_utils as pointquery_utils
 
