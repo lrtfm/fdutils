@@ -8,7 +8,8 @@ modules:
 develop: clean
 	@echo "    Develop the extension"
 	@python -m pip install -r requirements.txt > install_requirements.log 2>&1 || cat install_requirements.log
-	@python -m pip install -vvv -e . > develop.log 2>&1 || cat develop.log
+	@# @python -m pip install -vvv -e . > develop.log 2>&1 || cat develop.log
+	@python -m pip install --no-build-isolation --no-binary mpi4py,randomgen,islpy,numpy --no-deps -vvv -e . > develop.log 2>&1 || cat develop.log
 
 clean:
 	@echo "    Cleaning extension modules"
