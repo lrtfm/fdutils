@@ -6,17 +6,21 @@
 3. meshio: https://pypi.org/project/meshio/
 <!--4. Gmsh: https://pypi.org/project/gmsh -->
 
-## How to use
+## How to install
 
-1. clone the files
+1. Activate the firedrake environment
     ```
-    cd /my/path/to/repos
+    source </path/to/firedrake/bin/activate>
+    ```
+
+2. Clone the repo to the source directory of firedrake (or other path)
+    ```
+    cd $(dirname $(dirname $(which python)))/src
     git clone https://github.com/lrtfm/fdutils.git
     ```
 
-2. compile the codes in activated firedrake envionment
+3. Install
     ```
-    cd /my/path/to/repos/fdutils
     make develop
     ```
     

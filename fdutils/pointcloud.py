@@ -350,7 +350,7 @@ class PointCloud(object):
                     i = indices[idx]
                     loc_rank = located_elements[i, 0]
                     if loc_rank == -1 or rank < loc_rank:
-                        located_elements[i, :] = (rank, result[idx])
+                        located_elements[i, :] = (rank, result[idx][0])
 
         with timed_region("DebugPrintLocateInfoE"):
             syncPrint("[%d] Located elements: %s" % (self.mesh.comm.rank,
