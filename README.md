@@ -21,6 +21,7 @@
 
 3. Install
     ```
+    cd $(dirname $(dirname $(which python)))/src/fdutils
     make develop
     ```
     
