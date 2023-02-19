@@ -106,7 +106,7 @@ def _inner_spatial_index(self):
     gdim = self.ufl_cell().geometric_dimension()
     if gdim <= 1:
         info_red("libspatialindex does not support 1-dimension, falling back on brute force.")
-        return None
+        return (None, None)
 
     # Calculate the bounding boxes for all cells by running a kernel
     V = functionspace.VectorFunctionSpace(self, "DG", 0, dim=gdim)
