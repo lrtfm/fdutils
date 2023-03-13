@@ -16,7 +16,7 @@ import logging
 from ctypes import POINTER, c_int, c_double, c_void_p
 c_petsc_int = np.ctypeslib.as_ctypes_type(IntType)
 
-from firedrake.function import _CFunction
+from firedrake.function import _CFunction, PointNotInDomainError
 import firedrake.utils as utils
 
 from mpi4py.util.dtlib import to_numpy_dtype as mpi_to_numpy_dtype
@@ -544,21 +544,16 @@ def make_c_evaluate(function, c_name="evaluate_points", ldargs=None, tolerance=N
 
     from pyop2 import compilation, op2
     from pyop2.utils import get_petsc_dir
-    # https://github.com/firedrakeproject/firedrake/pull/2235
-    # TODO: remove the try
-    try:
-        from pyop2.sequential import generate_single_cell_wrapper
-    except ModuleNotFoundError:
-        from pyop2.parloop import generate_single_cell_wrapper
+    from pyop2.parloop import generate_single_cell_wrapper
 
     from firedrake import utils
     import firedrake.pointquery_utils as pq_utils
+    import firedrake as fd
 
     from fdutils.pointeval_utils import compile_element
-    from fdutils.meshpatch import src_locate_cell
 
     mesh = function.ufl_domain()
-    src = [src_locate_cell(mesh, tolerance=tolerance)]
+    src = [pq_utils.src_locate_cell(mesh, tolerance=tolerance)]
     src.append(compile_element(function, mesh.coordinates))
 
     args = []
@@ -584,9 +579,8 @@ def make_c_evaluate(function, c_name="evaluate_points", ldargs=None, tolerance=N
         ldargs = []
     ldargs += ["-L%s/lib" % sys.prefix, "-lspatialindex_c", "-Wl,-rpath,%s/lib" % sys.prefix]
     return compilation.load(src, "c", c_name,
-                            cppargs=["-I%s" % os.path.dirname(__file__),
-                                     "-I%s/src/firedrake/firedrake" % sys.prefix,
-                                     "-I%s/include" % sys.prefix]
+                            cppargs= ["-I%s" % p for p in fd.__path__]
+                            + ["-I%s/include" % sys.prefix]
                             + ["-I%s/include" % d for d in get_petsc_dir()],
                             ldargs=ldargs,
                             comm=function.comm)

@@ -9,14 +9,19 @@
 ## How to install
 
 1. Activate the firedrake environment
-    ```
+    ```bash
     source </path/to/firedrake/bin/activate>
     ```
 
 2. Clone the repo to the source directory of firedrake (or other path)
-    ```
+    ```bash
     cd $(dirname $(dirname $(which python)))/src
     git clone https://github.com/lrtfm/fdutils.git
+    ```
+
+    __NOTE__: If you use firedrake before firedrake pr#2662 (merged in 21/02/2023), please checkout branch `v20230219`
+    ```bash
+    git checkout -b v20230219
     ```
 
 3. Install

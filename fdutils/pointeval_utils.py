@@ -120,6 +120,7 @@ def compile_element(expression, coordinates, parameters=None):
         "layers": ", layers" if extruded else "",
         "extruded_define": "1" if extruded else "0",
         "IntType": as_cstr(IntType),
+        "RealType": utils.RealType_c,
         "scalar_type": utils.ScalarType_c,
         'num_per_node': num_per_node
     }
@@ -142,6 +143,10 @@ static inline void wrap_evaluate(%(scalar_type)s* const result, %(scalar_type)s*
 %(IntType)s evaluate_points(struct Function *f, %(IntType)s n, %(IntType)s * cells, double *xs, %(scalar_type)s *results)
 {
     struct ReferenceCoords reference_coords;
+    %(RealType)s cell_dist_l1 = 0.0;
+    if (!results) {
+        return n;
+    }
 
 #if %(extruded_define)s
     int layers[2] = {0, 0};
@@ -156,11 +161,12 @@ static inline void wrap_evaluate(%(scalar_type)s* const result, %(scalar_type)s*
         cell = cells[i] / nlayers;
         layer = cells[i] %% nlayers;
         layers[1] = layer + 2;
-        s += to_reference_coords_xtr(&reference_coords, f, cell, layer, &xs[i*%(geometric_dimension)d]);
+        cell_dist_l1 = to_reference_coords_xtr(&reference_coords, f, cell, layer, &xs[i*%(geometric_dimension)d]);
 #else
         cell = cells[i];
-        s += to_reference_coords(&reference_coords, f, cell, &xs[i*%(geometric_dimension)d]);
+        cell_dist_l1 = to_reference_coords(&reference_coords, f, cell, &xs[i*%(geometric_dimension)d]);
 #endif
+        if (cell_dist_l1 < 1e-8) { s++; } // TODO: should add this?
         wrap_evaluate(&results[i*%(num_per_node)d], reference_coords.X, cell, cell+1%(layers)s, f->coords, f->f, %(map_args)s);
     }
 

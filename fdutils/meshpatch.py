@@ -13,33 +13,6 @@ import firedrake.pointquery_utils as pointquery_utils
 
 __all__ = []
 
-def src_locate_cell(mesh, tolerance=None):
-    if tolerance is None:
-        tolerance = 1e-14
-    src = ['#include <evaluate.h>']
-    src.append(pointquery_utils.compile_coordinate_element(mesh.ufl_coordinate_element(), tolerance))
-    src.append(pointquery_utils.make_wrapper(mesh.coordinates,
-                            forward_args=["void*", "double*", "int*"],
-                            kernel_name="to_reference_coords_kernel",
-                            wrapper_name="wrap_to_reference_coords"))
-
-    # with open(path.join(sys.prefix, 'src/firedrake/firedrake', "locate.c")) as f:
-    with open(os.path.join(os.path.dirname(__file__), "locate.c")) as f:   # TODO
-        src.append(f.read())
-
-    src = "\n".join(src)
-    return src
-
-# patch for MeshGeometry
-
-# def locate_cell(self, x, tolerance=None):
-#     """Locate cell containg given point.
-#     :arg x: point coordinates
-#     :kwarg tolerance: for checking if a point is in a cell.
-#     :returns: cell number (int), or None (if the point is not in the domain)
-#     """
-#     raise NotImplementedError("Use locate_cells instead")
-
 def locate_cells(self, points, tolerance=None):
     if self.variable_layers:
         raise NotImplementedError("Cell location not implemented for variable layers")
@@ -60,28 +33,44 @@ def _c_locators(self, tolerance=None):
     from pyop2 import compilation
     from pyop2.utils import get_petsc_dir
     import firedrake.function as function
+    import firedrake.pointquery_utils as pq_utils
+    import firedrake as fd
 
     cache = self.__dict__.setdefault("_c_locators_cache", {})
     try:
         return cache[tolerance]
     except KeyError:
-        src = src_locate_cell(self, tolerance=tolerance)
+        src = pq_utils.src_locate_cell(self, tolerance=tolerance)
         src += """
+// TODO: should output Xs?
+// void locator(struct Function *f, double *xs, int npoint, int *cells, double *Xs)
 void locator(struct Function *f, double *xs, int npoint, int *cells)
 {
-    struct ReferenceCoords reference_coords;
-    return locate_cells(f, xs, %(geometric_dimension)d, npoint, &to_reference_coords, &to_reference_coords_xtr, &reference_coords, cells);
+    /* The type definitions and arguments used here are defined as
+        statics in pointquery_utils.py */
+    struct ReferenceCoords temp_reference_coords, found_reference_coords;
+    int j;
+    int dim = %(geometric_dimension)d;
+    for (j = 0; j < npoint; j++) {
+        cells[j] = locate_cell(f, &xs[j*%(geometric_dimension)d], %(geometric_dimension)d,
+                           &to_reference_coords, &to_reference_coords_xtr,
+                           &temp_reference_coords, &found_reference_coords);
+        // if (cells[j] >= 0) {
+        //     for(int i=0; i<%(geometric_dimension)d; i++) {
+        //         Xs[j*dim + i] = found_reference_coords.X[i];
+        //     }
+        // }
+    }
 }
 """ % dict(geometric_dimension=self.geometric_dimension())
 
         locator = compilation.load(src, "c", "locator",
-                                   cppargs=["-I%s" % os.path.dirname(__file__),
-                                            "-I%s/src/firedrake/firedrake" % sys.prefix,
-                                            "-I%s/include" % sys.prefix]
-                                   + ["-I%s/include" % d for d in get_petsc_dir()],
-                                   ldargs=["-L%s/lib" % sys.prefix,
-                                           "-lspatialindex_c",
-                                           "-Wl,-rpath,%s/lib" % sys.prefix])
+                                    cppargs=["-I%s" % p for p in fd.__path__]
+                                          + ["-I%s/include" % sys.prefix]
+                                          + ["-I%s/include" % d for d in get_petsc_dir()],
+                                    ldargs=["-L%s/lib" % sys.prefix,
+                                            "-lspatialindex_c",
+                                            "-Wl,-rpath,%s/lib" % sys.prefix])
 
         locator.argtypes = [ctypes.POINTER(function._CFunction),
                             ctypes.POINTER(ctypes.c_double),
@@ -206,7 +195,7 @@ def processes_spatial_index(self):
     return self._inner_spatial_index[1]
 
 
-# patch all things    
+# patch all things
 # from firedrake.mesh import MeshGeometry
 # import firedrake.pointquery_utils as pointquery_utils
 # pointquery_utils.src_locate_cell = meshpatch.src_locate_cell
