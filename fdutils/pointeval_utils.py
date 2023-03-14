@@ -142,11 +142,11 @@ static inline void wrap_evaluate(%(scalar_type)s* const result, %(scalar_type)s*
   Reference: firedrake/pointeval_utils.py
   https://github.com/firedrakeproject/firedrake/blob/dc535bc67b65683cd7cb33b954a6e6107af49b28/firedrake/pointeval_utils.py#L135
 */
-%(IntType)s evaluate_points(struct Function *f, %(IntType)s n, %(IntType)s * cells, double *xs, %(scalar_type)s *results)
+%(IntType)s evaluate_points(struct Function *f, %(IntType)s n, %(IntType)s * cells, double *xs, %(scalar_type)s *results, double *Xs)
 {
     struct ReferenceCoords reference_coords;
     %(RealType)s cell_dist_l1 = 0.0;
-    if (!results) {
+    if (!results and !Xs) {
         return n;
     }
 
@@ -169,7 +169,14 @@ static inline void wrap_evaluate(%(scalar_type)s* const result, %(scalar_type)s*
         cell_dist_l1 = to_reference_coords(&reference_coords, f, cell, &xs[i*%(geometric_dimension)d]);
 #endif
         if (cell_dist_l1 < 1e-8) { s++; } // TODO: should add this?
-        wrap_evaluate(&results[i*%(num_per_node)d], reference_coords.X, cell, cell+1%(layers)s, f->coords, f->f, %(map_args)s);
+        if (results) {
+            wrap_evaluate(&results[i*%(num_per_node)d], reference_coords.X, cell, cell+1%(layers)s, f->coords, f->f, %(map_args)s);
+        }
+        if (Xs) {
+            for (int j = 0; j < %(geometric_dimension)d; i++) {
+                Xs[i*%(geometric_dimension)d + j] = reference_coords.X[i];
+            }
+        }
     }
 
     return n - s;
