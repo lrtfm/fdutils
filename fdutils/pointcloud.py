@@ -111,7 +111,7 @@ class PointCloud(object):
         else:
             self.points = points
         syncPrint('[%d]'%mesh.comm.rank, points)
-        self.tolerance = tolerance
+        self.tolerance = mesh.tolerance if tolerance is None else tolerance
         _, dim = points.shape
         if dim != mesh.geometric_dimension():
             raise ValueError("Points must be %d-dimensional, (got %d)" %
@@ -499,11 +499,23 @@ class PointCloud(object):
         return ret
 
 
+    @cached_property
     @PETSc.Log.EventDecorator()
-    def restriction(self, function, pvs, callback=None):
-        """Evaluate a function at the located points.
-        :arg function: The function to evaluate.
-             pvs: values on points
+    def restriction_info(self):
+        recv_cells_buffers, recv_points_buffers, rank2cells = self.evaluate_info
+        Xs = {}
+        for r, cells in recv_cells_buffers.items():
+            ps = recv_points_buffers[r]
+            X = batch_area_coordinates(self.mesh.coordinates, cells, ps, tolerance=self.tolerance)
+            Xs[r] = X.T
+        return recv_cells_buffers, rank2cells, Xs
+
+
+    @PETSc.Log.EventDecorator()
+    def restrict(self, pvs, function):
+        """Restriction point values to fuction.
+        :arg pvs: value on points
+             function: The function hold result values.
         """
 
         if function.ufl_domain() != self.mesh:
@@ -512,36 +524,41 @@ class PointCloud(object):
         rank = self.mesh.comm.rank
         size = self.mesh.comm.size
 
-        # must do this!
-        from pyop2 import op2
-        function.dat.global_to_local_begin(op2.READ)
-        function.dat.global_to_local_end(op2.READ)
-
-        recv_cells_buffers, recv_points_buffers, rank2cells = self.evaluate_info
-
+        recv_cells_buffers, rank2cells, Xs = self.restriction_info
 
         with timed_region("PreparePointValues"):
+            m = np.prod(function.ufl_shape, dtype=IntType)
+            array_shape = lambda number: number if m == 1 else [number, m]
             recv_pvs = {}
-            for r, cells in recv_cells_buffers.items():
-                ps = recv_points_buffers[r]
-                recv_pvs[r] = np.empty(len(ps), dtype=ScalarType)
-
             send_pvs = {}
-            for r, pair in rank2cells.items():
-                send_pvs[r] = pvs[rank2cells[r][0]]
+            for r in range(size):
+                if r != rank:
+                    cells = recv_cells_buffers[r]
+                    recv_pvs[r] = np.empty(array_shape(len(cells)), dtype=ScalarType)
+                    send_pvs[r] = pvs[rank2cells[r][0]]
 
-        with timed_region("EvalResultExchange"):
+        with timed_region("PointValuesExchange"):
             self._perform_sparse_communication_round(recv_pvs, send_pvs)
 
-        with timed_region("EvalAreaCoords"):
-            cell_node_list = function.function_space().cell_node_list
-            ret = function.dat.data
-            for r, cells in recv_cells_buffers.items():
-                ps = recv_points_buffers[r]
+        recv_pvs[rank] = pvs[rank2cells[rank][0]]
+        cell_node_list = function.function_space().cell_node_list
+        function.dat.data[:] = 0
+        ret = np.empty_like(function.dat.data_ro)
+        with timed_region("Restriction"):
+            for r in range(size):
+                X = Xs[r]
                 pv = recv_pvs[r]
-                Xs = batch_area_coordinates(function, cells, ps, tolerance=self.tolerance)
-                for X, cell, v in zip(Xs, cells, pv):
-                    ret[cell_node_list[cell]] = v*X
+                cells = recv_cells_buffers[r]
+                if m == 1:
+                    for _X, _p, _cell in zip(X.T, pv, cells):
+                        # print(_p, _X, _cell, flush=True)
+                        ret[cell_node_list[_cell]] += _p*_X
+                else:
+                    for i in range(0, m):
+                        ret[cell_node_list[cells], i] += (pv[:, i]*X).T
+
+        function.dat.data[:] = ret
+        return function
 
 
 @PETSc.Log.EventDecorator()
@@ -549,13 +566,13 @@ def batch_area_coordinates(function, cells, xs, tolerance=None):
     r"""Helper function to evaluate at points."""
 
     n = IntType.type(len(cells))
-    m = np.prod(function.ufl_shape, dtype=IntType)
-    buf = np.zeros(n if m == 1 else [n, m], dtype=np.double)
+    dim = function.ufl_domain().topological_dimension()
+    buf = np.zeros([n, dim+1], dtype=np.double)
     err = _c_evaluate_pointscloud(function, tolerance=tolerance)(function._ctypes,
                                                 n,
                                                 cells.ctypes.data_as(POINTER(c_petsc_int)),
                                                 xs.ctypes.data_as(POINTER(c_double)),
-                                                POINTER(c_void_p)(),
+                                                c_void_p(),
                                                 buf.ctypes.data_as(POINTER(c_double)))
     if err > 0:
         # PETSc.Sys.syncPrint

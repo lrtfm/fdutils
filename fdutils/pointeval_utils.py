@@ -146,7 +146,7 @@ static inline void wrap_evaluate(%(scalar_type)s* const result, %(scalar_type)s*
 {
     struct ReferenceCoords reference_coords;
     %(RealType)s cell_dist_l1 = 0.0;
-    if (!results and !Xs) {
+    if (!results && !Xs) {
         return n;
     }
 
@@ -173,9 +173,12 @@ static inline void wrap_evaluate(%(scalar_type)s* const result, %(scalar_type)s*
             wrap_evaluate(&results[i*%(num_per_node)d], reference_coords.X, cell, cell+1%(layers)s, f->coords, f->f, %(map_args)s);
         }
         if (Xs) {
-            for (int j = 0; j < %(geometric_dimension)d; i++) {
-                Xs[i*%(geometric_dimension)d + j] = reference_coords.X[i];
+            double _X = 0;
+            for (int j = 0; j < %(geometric_dimension)d; j++) {
+                Xs[i*(%(geometric_dimension)d+1) + j] = reference_coords.X[j];
+                _X += reference_coords.X[j];
             }
+            Xs[i*(%(geometric_dimension)d+1) + %(geometric_dimension)d] = 1 - _X;
         }
     }
 
