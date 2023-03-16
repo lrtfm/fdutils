@@ -7,14 +7,18 @@ from fdutils import PointCloud
 from fdutils.mg import get_lump_mass_matrix
 
 
-def printf(msg):
+def sync_printf(msg):
     rank, size = COMM_WORLD.rank, COMM_WORLD.size
     print(f'[{rank}/{size}] ' + msg, flush=True)
 
+def printf(msg):
+    rank, size = COMM_WORLD.rank, COMM_WORLD.size
+    if rank == 0:
+        print(msg, flush=True)
 
 # for debug with gdb
 PID = os.getpid()
-printf(f'PID = {PID}')
+sync_printf(f'PID = {PID}')
 signal.signal(signal.SIGUSR1, lambda *args: None)
 os.kill(PID, signal.SIGUSR1)
 
@@ -46,16 +50,16 @@ M2 = get_lump_mass_matrix(f2.function_space())
 M1 = get_lump_mass_matrix(f1.function_space())
 
 
-pc = PointCloud(mesh1, mesh2.coordinates.dat.data_ro)
+pc = PointCloud(mesh1, mesh2.coordinates.dat.data_ro, tolerance=1)
 
 pvs = M2.dat.data_ro * f2.dat.data_ro
-print(pvs)
-print(f1.dat.data_ro)
 pc.restrict(pvs, f1)
-print(sum(pvs), sum(f1.dat.data_ro))
-f1.dat.data[:] = f1.dat.data_ro/M1.dat.data_ro
 
-print(f1.dat.data_ro)
+s = sum(pvs)
+s1 = COMM_WORLD.reduce(s)
+with f1.dat.vec_ro as vec:
+    s2 = vec.sum()
+printf(f'{s1} == {s2}')
 
 
 

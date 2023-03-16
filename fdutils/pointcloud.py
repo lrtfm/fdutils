@@ -8,6 +8,7 @@ from firedrake.mesh import spatialindex
 # from firedrake.dmplex import build_two_sided
 from firedrake.utils import cached_property
 from firedrake.petsc import PETSc
+from pyop2 import op2
 from pyop2.mpi import MPI
 from pyop2.datatypes import IntType, RealType, ScalarType
 from pyop2.profiling import timed_region
@@ -111,7 +112,7 @@ class PointCloud(object):
         else:
             self.points = points
         syncPrint('[%d]'%mesh.comm.rank, points)
-        self.tolerance = mesh.tolerance if tolerance is None else tolerance
+        self.tolerance = tolerance if tolerance is not None else 1e-12
         _, dim = points.shape
         if dim != mesh.geometric_dimension():
             raise ValueError("Points must be %d-dimensional, (got %d)" %
@@ -506,8 +507,7 @@ class PointCloud(object):
         Xs = {}
         for r, cells in recv_cells_buffers.items():
             ps = recv_points_buffers[r]
-            X = batch_area_coordinates(self.mesh.coordinates, cells, ps, tolerance=self.tolerance)
-            Xs[r] = X.T
+            Xs[r] = batch_area_coordinates(self.mesh.coordinates, cells, ps, tolerance=self.tolerance)
         return recv_cells_buffers, rank2cells, Xs
 
 
@@ -543,21 +543,24 @@ class PointCloud(object):
         recv_pvs[rank] = pvs[rank2cells[rank][0]]
         cell_node_list = function.function_space().cell_node_list
         function.dat.data[:] = 0
-        ret = np.empty_like(function.dat.data_ro)
+        ret = np.zeros_like(function.dat.data_ro_with_halos)
         with timed_region("Restriction"):
             for r in range(size):
                 X = Xs[r]
                 pv = recv_pvs[r]
                 cells = recv_cells_buffers[r]
                 if m == 1:
-                    for _X, _p, _cell in zip(X.T, pv, cells):
-                        # print(_p, _X, _cell, flush=True)
+                    for _X, _p, _cell in zip(X, pv, cells):
                         ret[cell_node_list[_cell]] += _p*_X
                 else:
                     for i in range(0, m):
-                        ret[cell_node_list[cells], i] += (pv[:, i]*X).T
+                        for _X, _p, _cell in zip(X, pv, cells):
+                            ret[cell_node_list[_cell], i] += _p[i]*_X
 
-        function.dat.data[:] = ret
+        function.dat._data[:] = ret
+        function.dat.local_to_global_begin(op2.INC)
+        function.dat.local_to_global_end(op2.INC)
+        function.dat.data[:]
         return function
 
 

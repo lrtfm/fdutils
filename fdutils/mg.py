@@ -28,7 +28,7 @@ def get_lump_mass_matrix(V: FunctionSpace):
     s, e = M.getOwnershipRange()
     for i in range(s, e):
         r = M.getRow(i)
-        data[i] = np.sum(r[1])
+        data[i-s] = np.sum(r[1])
 
     M_lump.dat.data[:] = data[:]
 
@@ -103,12 +103,15 @@ class NonnestedTransferManager(object):
             self.caches[V] = M
         return M
 
-    # Transfer a function from coarse space to the fine space
-    # prolong
-    def prolong(self, src: Function, dest: Function):
+    def interpolate(self, src: Function, dest: Function):
         pc = self.get_pointcloud(src, dest)
         val = pc.evaluate(src)
         dest.dat.data[:] = val[:]
+
+    # Transfer a function from coarse space to the fine space
+    # prolong
+    def prolong(self, src: Function, dest: Function):
+        self.interpolate(src, dest)
 
     # Transfer the fine solution to the coarse space
     def inject(self, src: Function, dest: Function):

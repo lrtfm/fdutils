@@ -168,17 +168,18 @@ static inline void wrap_evaluate(%(scalar_type)s* const result, %(scalar_type)s*
         cell = cells[i];
         cell_dist_l1 = to_reference_coords(&reference_coords, f, cell, &xs[i*%(geometric_dimension)d]);
 #endif
-        if (cell_dist_l1 < 1e-8) { s++; } // TODO: should add this?
+        if (cell_dist_l1 < 1e-12) { s++; } // TODO: should add this?
         if (results) {
             wrap_evaluate(&results[i*%(num_per_node)d], reference_coords.X, cell, cell+1%(layers)s, f->coords, f->f, %(map_args)s);
         }
         if (Xs) {
             double _X = 0;
             for (int j = 0; j < %(geometric_dimension)d; j++) {
-                Xs[i*(%(geometric_dimension)d+1) + j] = reference_coords.X[j];
+                Xs[i*(%(geometric_dimension)d+1) + j + 1] = reference_coords.X[j];
                 _X += reference_coords.X[j];
             }
-            Xs[i*(%(geometric_dimension)d+1) + %(geometric_dimension)d] = 1 - _X;
+            // Xs[i*(%(geometric_dimension)d+1) + %(geometric_dimension)d] = 1 - _X;
+            Xs[i*(%(geometric_dimension)d+1)] = 1 - _X;
         }
     }
 
