@@ -25,22 +25,22 @@ os.kill(PID, signal.SIGUSR1)
 
 opts = PETSc.Options()
 dim = opts.getInt('dim', default=2)
-Ns_str = opts.getString('ns', default='32,64')
-Ns = [int(_) for _ in Ns_str.split(',')]
+N = opts.getInt('n', default=4)
 
 nest = opts.getBool('nest', default=False)
 
+if dim == 2:
+    mesh_builder = lambda N: UnitSquareMesh(N, N)
+elif dim == 3:
+    mesh_builder = lambda N: UnitCubeMesh(N, N, N)
+else:
+    raise
+
 if nest:
-    mesh_init = UnitSquareMesh(Ns[0], Ns[0])
+    mesh_init = mesh_builder(N)
     hierarchy = MeshHierarchy(mesh_init, 1)
 else:
-    if dim == 2:
-        meshes  = [UnitSquareMesh(_, _) for _ in Ns]
-    elif dim == 3:
-        meshes = [UnitCubeMesh(_, _, _) for _ in Ns]
-    else:
-        raise
-
+    meshes  = [mesh_builder(N*(2**i)) for i in range(2)]
     hierarchy = NonNestedHierarchy(*meshes)
 
 mesh = hierarchy[-1]
