@@ -120,6 +120,7 @@ def compile_element(expression, coordinates, parameters=None):
         "layers": ", layers" if extruded else "",
         "extruded_define": "1" if extruded else "0",
         "IntType": as_cstr(IntType),
+        "RealType": utils.RealType_c,
         "scalar_type": utils.ScalarType_c,
         'num_per_node': num_per_node
     }
@@ -139,9 +140,13 @@ static inline void wrap_evaluate(%(scalar_type)s* const result, %(scalar_type)s*
   Reference: firedrake/pointeval_utils.py
   https://github.com/firedrakeproject/firedrake/blob/dc535bc67b65683cd7cb33b954a6e6107af49b28/firedrake/pointeval_utils.py#L135
 */
-%(IntType)s evaluate_points(struct Function *f, %(IntType)s n, %(IntType)s * cells, double *xs, %(scalar_type)s *results)
+%(IntType)s evaluate_points(struct Function *f, %(IntType)s n, %(IntType)s * cells, double *xs, %(scalar_type)s *results, double *Xs)
 {
     struct ReferenceCoords reference_coords;
+    %(RealType)s cell_dist_l1 = 0.0;
+    if (!results && !Xs) {
+        return n;
+    }
 
 #if %(extruded_define)s
     int layers[2] = {0, 0};
@@ -161,7 +166,18 @@ static inline void wrap_evaluate(%(scalar_type)s* const result, %(scalar_type)s*
         cell = cells[i];
         s += to_reference_coords(&reference_coords, f, cell, &xs[i*%(geometric_dimension)d]);
 #endif
-        wrap_evaluate(&results[i*%(num_per_node)d], reference_coords.X, cell, cell+1%(layers)s, f->coords, f->f, %(map_args)s);
+        if (results) {
+            wrap_evaluate(&results[i*%(num_per_node)d], reference_coords.X, cell, cell+1%(layers)s, f->coords, f->f, %(map_args)s);
+        }
+        if (Xs) {
+            double _X = 0;
+            for (int j = 0; j < %(geometric_dimension)d; j++) {
+                Xs[i*(%(geometric_dimension)d+1) + j + 1] = reference_coords.X[j];
+                _X += reference_coords.X[j];
+            }
+            // Xs[i*(%(geometric_dimension)d+1) + %(geometric_dimension)d] = 1 - _X;
+            Xs[i*(%(geometric_dimension)d+1)] = 1 - _X;
+        }
     }
 
     return n - s;

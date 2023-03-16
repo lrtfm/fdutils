@@ -8,6 +8,7 @@ from firedrake.mesh import spatialindex
 # from firedrake.dmplex import build_two_sided
 from firedrake.utils import cached_property
 from firedrake.petsc import PETSc
+from pyop2 import op2
 from pyop2.mpi import MPI
 from pyop2.datatypes import IntType, RealType, ScalarType
 from pyop2.profiling import timed_region
@@ -16,7 +17,7 @@ import logging
 from ctypes import POINTER, c_int, c_double, c_void_p
 c_petsc_int = np.ctypeslib.as_ctypes_type(IntType)
 
-from firedrake.function import _CFunction
+from firedrake.function import _CFunction, PointNotInDomainError
 import firedrake.utils as utils
 
 from mpi4py.util.dtlib import to_numpy_dtype as mpi_to_numpy_dtype
@@ -111,7 +112,7 @@ class PointCloud(object):
         else:
             self.points = points
         syncPrint('[%d]'%mesh.comm.rank, points)
-        self.tolerance = tolerance
+        self.tolerance = tolerance if tolerance is not None else 1e-12
         _, dim = points.shape
         if dim != mesh.geometric_dimension():
             raise ValueError("Points must be %d-dimensional, (got %d)" %
@@ -498,6 +499,93 @@ class PointCloud(object):
 
         return ret
 
+
+    @cached_property
+    @PETSc.Log.EventDecorator()
+    def restriction_info(self):
+        recv_cells_buffers, recv_points_buffers, rank2cells = self.evaluate_info
+        Xs = {}
+        for r, cells in recv_cells_buffers.items():
+            ps = recv_points_buffers[r]
+            Xs[r] = batch_area_coordinates(self.mesh.coordinates, cells, ps, tolerance=self.tolerance)
+        return recv_cells_buffers, rank2cells, Xs
+
+
+    @PETSc.Log.EventDecorator()
+    def restrict(self, pvs, function):
+        """Restriction point values to fuction.
+        :arg pvs: value on points
+             function: The function hold result values.
+        """
+
+        if function.ufl_domain() != self.mesh:
+            raise('The function must be defined on the mesh of this PointCloud!')
+
+        rank = self.mesh.comm.rank
+        size = self.mesh.comm.size
+
+        recv_cells_buffers, rank2cells, Xs = self.restriction_info
+
+        with timed_region("PreparePointValues"):
+            m = np.prod(function.ufl_shape, dtype=IntType)
+            array_shape = lambda number: number if m == 1 else [number, m]
+            recv_pvs = {}
+            send_pvs = {}
+            for r in range(size):
+                if r != rank:
+                    cells = recv_cells_buffers[r]
+                    recv_pvs[r] = np.empty(array_shape(len(cells)), dtype=ScalarType)
+                    send_pvs[r] = pvs[rank2cells[r][0]]
+
+        with timed_region("PointValuesExchange"):
+            self._perform_sparse_communication_round(recv_pvs, send_pvs)
+
+        recv_pvs[rank] = pvs[rank2cells[rank][0]]
+        cell_node_list = function.function_space().cell_node_list
+        function.dat.data[:] = 0
+        ret = np.zeros_like(function.dat.data_ro_with_halos)
+        with timed_region("Restriction"):
+            for r in range(size):
+                X = Xs[r]
+                pv = recv_pvs[r]
+                cells = recv_cells_buffers[r]
+                if m == 1:
+                    for _X, _p, _cell in zip(X, pv, cells):
+                        ret[cell_node_list[_cell]] += _p*_X
+                else:
+                    for i in range(0, m):
+                        for _X, _p, _cell in zip(X, pv, cells):
+                            ret[cell_node_list[_cell], i] += _p[i]*_X
+
+        function.dat._data[:] = ret
+        function.dat.local_to_global_begin(op2.INC)
+        function.dat.local_to_global_end(op2.INC)
+        function.dat.data[:]
+        return function
+
+
+@PETSc.Log.EventDecorator()
+def batch_area_coordinates(function, cells, xs, tolerance=None):
+    r"""Helper function to evaluate at points."""
+
+    n = IntType.type(len(cells))
+    dim = function.ufl_domain().topological_dimension()
+    buf = np.zeros([n, dim+1], dtype=np.double)
+    err = _c_evaluate_pointscloud(function, tolerance=tolerance)(function._ctypes,
+                                                n,
+                                                cells.ctypes.data_as(POINTER(c_petsc_int)),
+                                                xs.ctypes.data_as(POINTER(c_double)),
+                                                c_void_p(),
+                                                buf.ctypes.data_as(POINTER(c_double)))
+    if err > 0:
+        # PETSc.Sys.syncPrint
+        logger.warning('[%d]: %d of %d points are located in wrong place!'%(function.comm.rank, err, n))
+    elif err < 0:
+        raise PointNotInDomainError('We won\'t be here!')
+
+    return buf
+
+
 @PETSc.Log.EventDecorator()
 def batch_eval(function, cells, xs, tolerance=None):
     r"""Helper function to evaluate at points."""
@@ -510,18 +598,19 @@ def batch_eval(function, cells, xs, tolerance=None):
                                                 n,
                                                 cells.ctypes.data_as(POINTER(c_petsc_int)),
                                                 xs.ctypes.data_as(POINTER(c_double)),
-                                                buf.ctypes.data_as(c_void_p))
+                                                buf.ctypes.data_as(c_void_p),
+                                                POINTER(c_double)())
     if err > 0:
         # PETSc.Sys.syncPrint
         logger.warning('[%d]: %d of %d points are located in wrong place!'%(function.comm.rank, err, n))
-
-    if err == -1:
+    elif err < 0:
         raise PointNotInDomainError('We won\'t be here!')
 
     return buf
 
 @PETSc.Log.EventDecorator()
 def _c_evaluate_pointscloud(function, tolerance=None):
+    # Should this cache go to FunctionSpace?
     cache = function.__dict__.setdefault("_c_evaluate_pointscloud_cache", {})
     try:
         return cache[tolerance]
@@ -531,14 +620,15 @@ def _c_evaluate_pointscloud(function, tolerance=None):
                            c_petsc_int,
                            POINTER(c_petsc_int),
                            POINTER(c_double),
-                           c_void_p]
+                           c_void_p,
+                           POINTER(c_double)]
         result.restype = c_petsc_int
         return cache.setdefault(tolerance, result)
 
 @PETSc.Log.EventDecorator()
 def make_c_evaluate(function, c_name="evaluate_points", ldargs=None, tolerance=None):
     r"""Generates, compiles and loads a C function to evaluate the
-    given Firedrake :class:`Function`."""
+    given Firedrake :class:`Function` and return the area coordiantes."""
 
     from os import path
 
@@ -553,6 +643,7 @@ def make_c_evaluate(function, c_name="evaluate_points", ldargs=None, tolerance=N
 
     from firedrake import utils
     import firedrake.pointquery_utils as pq_utils
+    import firedrake as fd
 
     from fdutils.pointeval_utils import compile_element
     from fdutils.meshpatch import src_locate_cell
@@ -584,9 +675,8 @@ def make_c_evaluate(function, c_name="evaluate_points", ldargs=None, tolerance=N
         ldargs = []
     ldargs += ["-L%s/lib" % sys.prefix, "-lspatialindex_c", "-Wl,-rpath,%s/lib" % sys.prefix]
     return compilation.load(src, "c", c_name,
-                            cppargs=["-I%s" % os.path.dirname(__file__),
-                                     "-I%s/src/firedrake/firedrake" % sys.prefix,
-                                     "-I%s/include" % sys.prefix]
+                            cppargs= ["-I%s" % p for p in fd.__path__]
+                            + ["-I%s/include" % sys.prefix]
                             + ["-I%s/include" % d for d in get_petsc_dir()],
                             ldargs=ldargs,
                             comm=function.comm)
