@@ -531,10 +531,12 @@ class PointCloud(object):
             array_shape = lambda number: number if m == 1 else [number, m]
             recv_pvs = {}
             send_pvs = {}
-            for r in range(size):
+            for r, cells in recv_cells_buffers.items():
                 if r != rank:
                     cells = recv_cells_buffers[r]
                     recv_pvs[r] = np.empty(array_shape(len(cells)), dtype=ScalarType)
+            for r in rank2cells.keys():
+                if r != rank:
                     send_pvs[r] = pvs[rank2cells[r][0]]
 
         with timed_region("PointValuesExchange"):
@@ -545,10 +547,9 @@ class PointCloud(object):
         function.dat.data[:] = 0
         ret = np.zeros_like(function.dat.data_ro_with_halos)
         with timed_region("Restriction"):
-            for r in range(size):
+            for r, cells in recv_cells_buffers.items():
                 X = Xs[r]
                 pv = recv_pvs[r]
-                cells = recv_cells_buffers[r]
                 if m == 1:
                     for _X, _p, _cell in zip(X, pv, cells):
                         ret[cell_node_list[_cell]] += _p*_X

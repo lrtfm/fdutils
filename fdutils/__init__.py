@@ -8,9 +8,7 @@ try:
 except ModuleNotFoundError as err:
     warning("You may need to install package: %s" % err.name)
     
-
-
-
+from fdutils.mg import NonnestedTransferManager
 
 from . import _version
 __version__ = _version.get_versions()['version']

@@ -13,7 +13,7 @@ from tsfc.parameters import default_parameters
 
 from firedrake import utils
 from firedrake.petsc import PETSc
-from firedrake.utils import IntType, as_cstr
+from firedrake.utils import IntType, RealType, as_cstr
 
 import numpy as np
 
@@ -120,7 +120,7 @@ def compile_element(expression, coordinates, parameters=None):
         "layers": ", layers" if extruded else "",
         "extruded_define": "1" if extruded else "0",
         "IntType": as_cstr(IntType),
-        "RealType": utils.RealType_c,
+        "RealType": as_cstr(RealType),
         "scalar_type": utils.ScalarType_c,
         'num_per_node': num_per_node
     }
