@@ -6,6 +6,7 @@ from fdutils.meshutils import *
 try:
     from fdutils.ptqdm import *
 except ModuleNotFoundError as err:
+    from firedrake import warning
     warning("You may need to install package: %s" % err.name)
     
 from fdutils.mg import NonnestedTransferManager
