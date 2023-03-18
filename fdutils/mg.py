@@ -75,10 +75,12 @@ def get_nodes_coords_space(V):
 
 class NonnestedTransferManager(object):
     __pc_caches = {}
+    __mat_caches = {}
 
     def __init__(self, *, native_transfers=None, use_averaging=True):
         PETSc.Sys.Print(f'Init {type(self)}')
-        self.caches = NonnestedTransferManager.__pc_caches
+        self.pc_caches = NonnestedTransferManager.__pc_caches
+        self.mat_caches = NonnestedTransferManager.__mat_caches
         self.tolerance = PETSc.Options().getReal('-ntm_tolerance', 1e-12)
         pass
 
@@ -89,21 +91,37 @@ class NonnestedTransferManager(object):
         V = get_nodes_coords_space(V_dest)
         key = (m_src, V)
 
-        if key in self.caches:
-            pc = self.caches[key]
+        if key in self.pc_caches:
+            pc = self.pc_caches[key]
         else:
             points = Function(V).interpolate(m_dest.coordinates)
             pc = PointCloud(m_src, points.dat.data_ro, self.tolerance)
-            self.caches[key] = pc
+            self.pc_caches[key] = pc
 
         return pc
 
+    def get_restrict_matrix(self, src, dest):
+        m_src = src.ufl_domain()
+        m_dest = dest.ufl_domain()
+        V_dest = dest.function_space()
+        V = get_nodes_coords_space(V_dest)
+        key = (m_src, V)
+
+        if key in self.mat_caches:
+            mat = self.mat_caches[key]
+        else:
+            pc = self.get_pointcloud(src, dest)
+            mat = pc.create_restrict_matrix(dest, src)
+            self.mat_caches[key] = mat
+
+        return mat
+
     def get_lump_mass_matrix(self, V: FunctionSpace):
-        if V in self.caches:
-            M = self.caches[V]
+        if V in self.mat_caches:
+            M = self.mat_caches[V]
         else:
             M = get_lump_mass_matrix(V)
-            self.caches[V] = M
+            self.mat_caches[V] = M
         return M
 
     def interpolate(self, src: Function, dest: Function):
@@ -128,10 +146,12 @@ class NonnestedTransferManager(object):
 
         # when restrict src to dest
         # we use the mesh of dest as base mesh
-        pc = self.get_pointcloud(dest, src)
+        pvs = Function(src)
+        pvs.dat.data[:] = M_src.dat.data_ro*src.dat.data_ro
 
-        pvs = M_src.dat.data_ro[:] * src.dat.data_ro
-        pc.restrict(pvs, dest)
+        mat = self.get_restrict_matrix(dest, src)
+        with pvs.dat.vec_ro as src_vec, dest.dat.vec as dest_vec:
+                mat.mult(src_vec, dest_vec)
         dest.dat.data[:] = dest.dat.data_ro/M_dest.dat.data_ro
 
         return dest
