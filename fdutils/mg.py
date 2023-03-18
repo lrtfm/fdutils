@@ -76,11 +76,13 @@ def get_nodes_coords_space(V):
 class NonnestedTransferManager(object):
     __pc_caches = {}
     __mat_caches = {}
+    __fun_caches = {}
 
     def __init__(self, *, native_transfers=None, use_averaging=True):
         PETSc.Sys.Print(f'Init {type(self)}')
         self.pc_caches = NonnestedTransferManager.__pc_caches
         self.mat_caches = NonnestedTransferManager.__mat_caches
+        self.fun_caches = NonnestedTransferManager.__fun_caches
         self.tolerance = PETSc.Options().getReal('-ntm_tolerance', 1e-12)
         pass
 
@@ -133,6 +135,15 @@ class NonnestedTransferManager(object):
     def inject(self, src: Function, dest: Function):
         self.prolong(src, dest)
 
+    def get_function(self, V):
+        if V in self.fun_caches:
+            fun = self.fun_caches[V]
+        else:
+            fun = Function(V)
+            self.fun_caches[V] = fun
+
+        return fun
+
     # Transfer the fine residual to the coarse space
     # Here we assume src and dest are P1 Function
     def restrict(self, src: Function, dest: Function):
@@ -141,7 +152,7 @@ class NonnestedTransferManager(object):
 
         # when restrict src to dest
         # we use the mesh of dest as base mesh
-        pvs = Function(src)
+        pvs = self.get_function(src.function_space())
         pvs.dat.data[:] = M_src.dat.data_ro*src.dat.data_ro
 
         mat = self.get_interpolate_matrix(dest, src)
