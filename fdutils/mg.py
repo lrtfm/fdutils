@@ -74,9 +74,12 @@ def get_nodes_coords_space(V):
 
 
 class NonnestedTransferManager(object):
+    __pc_caches = {}
 
     def __init__(self, *, native_transfers=None, use_averaging=True):
-        self.caches = {}
+        PETSc.Sys.Print(f'Init {type(self)}')
+        self.caches = NonnestedTransferManager.__pc_caches
+        self.tolerance = PETSc.Options().getReal('-ntm_tolerance', 1e-12)
         pass
 
     def get_pointcloud(self, src, dest):
@@ -90,7 +93,7 @@ class NonnestedTransferManager(object):
             pc = self.caches[key]
         else:
             points = Function(V).interpolate(m_dest.coordinates)
-            pc = PointCloud(m_src, points.dat.data_ro)
+            pc = PointCloud(m_src, points.dat.data_ro, self.tolerance)
             self.caches[key] = pc
 
         return pc

@@ -360,12 +360,12 @@ class PointCloud(object):
             syncFlush(comm=self.mesh.comm)
 
         with timed_region("GetNotFoundInfo"):
-            points_not_found_indices = np.where(located_elements[:, 1] == -1)[0]
-            self.points_not_found_indices = points_not_found_indices
-            if len(points_not_found_indices) > 0:
-                logger.warning('[%2d/%2d] PointCloud._locate_mesh_elements: %d points not located!'%(
-                    self.mesh.comm.rank, self.mesh.comm.size, len(points_not_found_indices)))
-        # PETSc.Sys.syncFlush()
+            self.points_not_found_indices = np.where(located_elements[:, 1] == -1)[0]
+            self.points_not_found = self.points[self.points_not_found_indices, :]
+            self.num_points_not_found = len(self.points_not_found_indices)
+            self.total_num_points_not_found = self.mesh.comm.allreduce(self.num_points_not_found)
+            if self.total_num_points_not_found > 0:
+                Print("fdutils:WARNING PointCloud._locate_mesh_elements: {self.total_num_points_not_found} points not located!")
 
         return located_elements
 
@@ -475,27 +475,12 @@ class PointCloud(object):
             else:
                 ret[rank2cells[r][0], :] = v
 
-        with timed_region("Callback"):
-            # Notes: Make sure every process call callback for parallell case.
-            #        How to do it more reasonable?
-            if len(self.points_not_found_indices) > 0:
-                num_points = len(self.points_not_found_indices)
-                points_not_found = self.points[self.points_not_found_indices, :]
-                if callback is not None:
-                    # TODO: sync to the first process and then print?
-                    logger.warning('[%2d/%2d] PointCloud.evaluate: %d points not located, the callback is called!'\
-                                    %(rank, size, num_points))
-                else:
-                    logger.warning('[%2d/%2d] PointCloud.evaluate: %d points not located, the values are set to zero!'\
-                                    %(rank, size, num_points))
-            else:
-                num_points = 0
-                points_not_found = np.zeros([0, self.points.shape[1]], dtype=RealType)
-            if callback is not None:
+        if callback is not None:
+            with timed_region("Callback"):
                 if m == 1:
-                    ret[self.points_not_found_indices] = callback(points_not_found)
+                    ret[self.points_not_found_indices] = callback(self.points_not_found)
                 else:
-                    ret[self.points_not_found_indices, :] = callback(points_not_found)
+                    ret[self.points_not_found_indices, :] = callback(self.points_not_found)
 
         return ret
 
