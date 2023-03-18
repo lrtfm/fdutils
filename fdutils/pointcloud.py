@@ -360,12 +360,12 @@ class PointCloud(object):
             syncFlush(comm=self.mesh.comm)
 
         with timed_region("GetNotFoundInfo"):
-            points_not_found_indices = np.where(located_elements[:, 1] == -1)[0]
-            self.points_not_found_indices = points_not_found_indices
-            if len(points_not_found_indices) > 0:
-                logger.warning('[%2d/%2d] PointCloud._locate_mesh_elements: %d points not located!'%(
-                    self.mesh.comm.rank, self.mesh.comm.size, len(points_not_found_indices)))
-        # PETSc.Sys.syncFlush()
+            self.points_not_found_indices = np.where(located_elements[:, 1] == -1)[0]
+            self.points_not_found = self.points[self.points_not_found_indices, :]
+            self.num_points_not_found = len(self.points_not_found_indices)
+            self.total_num_points_not_found = self.mesh.comm.allreduce(self.num_points_not_found)
+            if self.total_num_points_not_found > 0:
+                Print("fdutils:WARNING PointCloud._locate_mesh_elements: {self.total_num_points_not_found} points not located!")
 
         return located_elements
 
@@ -475,27 +475,12 @@ class PointCloud(object):
             else:
                 ret[rank2cells[r][0], :] = v
 
-        with timed_region("Callback"):
-            # Notes: Make sure every process call callback for parallell case.
-            #        How to do it more reasonable?
-            if len(self.points_not_found_indices) > 0:
-                num_points = len(self.points_not_found_indices)
-                points_not_found = self.points[self.points_not_found_indices, :]
-                if callback is not None:
-                    # TODO: sync to the first process and then print?
-                    logger.warning('[%2d/%2d] PointCloud.evaluate: %d points not located, the callback is called!'\
-                                    %(rank, size, num_points))
-                else:
-                    logger.warning('[%2d/%2d] PointCloud.evaluate: %d points not located, the values are set to zero!'\
-                                    %(rank, size, num_points))
-            else:
-                num_points = 0
-                points_not_found = np.zeros([0, self.points.shape[1]], dtype=RealType)
-            if callback is not None:
+        if callback is not None:
+            with timed_region("Callback"):
                 if m == 1:
-                    ret[self.points_not_found_indices] = callback(points_not_found)
+                    ret[self.points_not_found_indices] = callback(self.points_not_found)
                 else:
-                    ret[self.points_not_found_indices, :] = callback(points_not_found)
+                    ret[self.points_not_found_indices, :] = callback(self.points_not_found)
 
         return ret
 
@@ -509,6 +494,56 @@ class PointCloud(object):
             ps = recv_points_buffers[r]
             Xs[r] = batch_area_coordinates(self.mesh.coordinates, cells, ps, tolerance=self.tolerance)
         return recv_cells_buffers, rank2cells, Xs
+
+
+    @PETSc.Log.EventDecorator()
+    def create_interpolate_matrix(self, src, dest):
+        rank, size = self.mesh.comm.rank, self.mesh.comm.rank
+        recv_cells_buffers, rank2cells, Xs = self.restriction_info
+
+        m = len(dest.dat.data_ro)
+        n = len(src.dat.data_ro)
+        rlgmap = dest.dof_dset.lgmap
+        clgmap = src.dof_dset.lgmap
+        cell_node_list = src.function_space().cell_node_list
+
+        with timed_region("PreparePointIndex"):
+            pvs = rlgmap.apply(np.arange(len(self.points), dtype=IntType))
+            recv_pvs = {}
+            send_pvs = {}
+            for r, cells in recv_cells_buffers.items():
+                if r != rank:
+                    cells = recv_cells_buffers[r]
+                    recv_pvs[r] = np.empty(len(cells), dtype=pvs.dtype)
+            for r in rank2cells.keys():
+                if r != rank:
+                    send_pvs[r] = pvs[rank2cells[r][0]]
+
+        with timed_region("PointValuesExchange"):
+            self._perform_sparse_communication_round(recv_pvs, send_pvs)
+
+        dim = self.mesh.geometric_dimension()
+        mat = PETSc.Mat().createAIJ(size=((m, None), (n, None)),
+                      nnz=(dim+1, dim+1),
+                      bsize=1,
+                      comm=self.mesh.comm)
+        mat.setLGMap(rmap=rlgmap, cmap=clgmap)
+        mat.setFromOptions()
+        mat.setUp()
+
+        recv_pvs[rank] = pvs[rank2cells[rank][0]]
+        g_cell_node_list = clgmap.apply(cell_node_list).reshape(cell_node_list.shape)
+        with timed_region("Restriction"):
+            for r, cells in recv_cells_buffers.items():
+                X = Xs[r]
+                row = recv_pvs[r]
+                for _r, _X, _cell in zip(row, X, cells):
+                    _c = g_cell_node_list[_cell]
+                    mat.setValues(_r, _c, _X)
+
+        mat.assemble()
+
+        return mat
 
 
     @PETSc.Log.EventDecorator()
