@@ -84,23 +84,18 @@ class NonnestedTransferManager(object):
         self.tolerance = PETSc.Options().getReal('-ntm_tolerance', 1e-12)
         pass
 
-    def get_pointcloud(self, src, dest):
-        m_src = src.ufl_domain()
-        m_dest = dest.ufl_domain()
-        V_dest = dest.function_space()
-        V = get_nodes_coords_space(V_dest)
-        key = (m_src, V)
-
+    def get_pointcloud(self, key):
+        m_src, V = key
         if key in self.pc_caches:
             pc = self.pc_caches[key]
         else:
-            points = Function(V).interpolate(m_dest.coordinates)
+            points = Function(V).interpolate(V.ufl_domain().coordinates)
             pc = PointCloud(m_src, points.dat.data_ro, self.tolerance)
             self.pc_caches[key] = pc
 
         return pc
 
-    def get_restrict_matrix(self, src, dest):
+    def get_interpolate_matrix(self, src, dest):
         m_src = src.ufl_domain()
         m_dest = dest.ufl_domain()
         V_dest = dest.function_space()
@@ -110,8 +105,8 @@ class NonnestedTransferManager(object):
         if key in self.mat_caches:
             mat = self.mat_caches[key]
         else:
-            pc = self.get_pointcloud(src, dest)
-            mat = pc.create_restrict_matrix(dest, src)
+            pc = self.get_pointcloud(key)
+            mat = pc.create_interpolate_matrix(src, dest)
             self.mat_caches[key] = mat
 
         return mat
@@ -125,9 +120,9 @@ class NonnestedTransferManager(object):
         return M
 
     def interpolate(self, src: Function, dest: Function):
-        pc = self.get_pointcloud(src, dest)
-        val = pc.evaluate(src)
-        dest.dat.data[:] = val[:]
+        mat = self.get_interpolate_matrix(src, dest)
+        with src.dat.vec_ro as src_vec, dest.dat.vec as dest_vec:
+                mat.mult(src_vec, dest_vec)
 
     # Transfer a function from coarse space to the fine space
     # prolong
@@ -149,9 +144,9 @@ class NonnestedTransferManager(object):
         pvs = Function(src)
         pvs.dat.data[:] = M_src.dat.data_ro*src.dat.data_ro
 
-        mat = self.get_restrict_matrix(dest, src)
+        mat = self.get_interpolate_matrix(dest, src)
         with pvs.dat.vec_ro as src_vec, dest.dat.vec as dest_vec:
-                mat.mult(src_vec, dest_vec)
+                mat.multTranspose(src_vec, dest_vec)
         dest.dat.data[:] = dest.dat.data_ro/M_dest.dat.data_ro
 
         return dest
