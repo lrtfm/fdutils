@@ -97,6 +97,7 @@ class NonnestedTransferManager(object):
 
         return pc
 
+    @PETSc.Log.EventDecorator()
     def get_interpolate_matrix(self, src, dest):
         m_src = src.ufl_domain()
         m_dest = dest.ufl_domain()
@@ -128,12 +129,14 @@ class NonnestedTransferManager(object):
 
     # Transfer a function from coarse space to the fine space
     # prolong
+    @PETSc.Log.EventDecorator()
     def prolong(self, src: Function, dest: Function):
         self.interpolate(src, dest)
 
     # Transfer the fine solution to the coarse space
+    @PETSc.Log.EventDecorator()
     def inject(self, src: Function, dest: Function):
-        self.prolong(src, dest)
+        self.interpolate(src, dest)
 
     def get_function(self, V):
         if V in self.fun_caches:
@@ -146,6 +149,7 @@ class NonnestedTransferManager(object):
 
     # Transfer the fine residual to the coarse space
     # Here we assume src and dest are P1 Function
+    @PETSc.Log.EventDecorator()
     def restrict(self, src: Function, dest: Function):
         M_src = self.get_lump_mass_matrix(src.function_space())
         M_dest = self.get_lump_mass_matrix(dest.function_space())
