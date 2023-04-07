@@ -19,15 +19,17 @@
     git clone https://github.com/lrtfm/fdutils.git
     ```
 
-    __NOTE__: If you use firedrake before firedrake pr#2662 (merged in 21/02/2023), please checkout branch `v20230219`
-    ```bash
-    git checkout -b v20230219
-    ```
 
 3. Install
     ```
     cd $(dirname $(dirname $(which python)))/src/fdutils
     make develop
+    ```
+    
+    __NOTE__: If you use firedrake before firedrake pr#2662 (merged in 21/02/2023), please checkout branch `v20230219` before `make`:
+    
+    ```bash
+    git checkout v20230219
     ```
     
 ## List class/functions
