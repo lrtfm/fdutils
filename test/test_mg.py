@@ -26,6 +26,7 @@ os.kill(PID, signal.SIGUSR1)
 opts = PETSc.Options()
 dim = opts.getInt('dim', default=2)
 N = opts.getInt('n', default=4)
+p = opts.getInt('p', default=1)
 
 nest = opts.getBool('nest', default=False)
 
@@ -53,7 +54,7 @@ elif dim == 3:
 else:
     raise
 
-V = FunctionSpace(mesh, 'CG', 1)
+V = FunctionSpace(mesh, 'CG', p)
 u, v = TrialFunction(V), TestFunction(V)
 
 f = - div(grad(u_exact))

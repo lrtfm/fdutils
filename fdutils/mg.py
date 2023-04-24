@@ -9,16 +9,14 @@ from ufl import FiniteElement, TensorProductElement
 import numpy as np
 
 
-def check_P1_space(V: FunctionSpace):
+def check_Pn_space(V: FunctionSpace):
     ele = V.ufl_element()
-    if not (ele.family() == 'Lagrange' and 
-            ele.degree() == 1 and 
-            isinstance(ele, FiniteElement)):
+    if not (ele.family() == 'Lagrange' and isinstance(ele, FiniteElement)):
         raise NotImplementedError
 
 
 def get_lump_mass_matrix(V: FunctionSpace):
-    check_P1_space(V)
+    check_Pn_space(V)
     u, v = TrialFunction(V), TestFunction(V)
     a = inner(u, v)*dx
     M = assemble(a).petscmat
@@ -151,17 +149,8 @@ class NonnestedTransferManager(object):
     # Here we assume src and dest are P1 Function
     @PETSc.Log.EventDecorator()
     def restrict(self, src: Function, dest: Function):
-        M_src = self.get_lump_mass_matrix(src.function_space())
-        M_dest = self.get_lump_mass_matrix(dest.function_space())
-
-        # when restrict src to dest
-        # we use the mesh of dest as base mesh
-        pvs = self.get_function(src.function_space())
-        pvs.dat.data[:] = M_src.dat.data_ro*src.dat.data_ro
-
         mat = self.get_interpolate_matrix(dest, src)
-        with pvs.dat.vec_ro as src_vec, dest.dat.vec as dest_vec:
-                mat.multTranspose(src_vec, dest_vec)
-        dest.dat.data[:] = dest.dat.data_ro/M_dest.dat.data_ro
+        with src.dat.vec_ro as src_vec, dest.dat.vec as val_vec:
+                mat.multTranspose(src_vec, val_vec)
 
         return dest
