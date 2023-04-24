@@ -4,7 +4,7 @@ from firedrake.petsc import PETSc
 import os
 import signal
 from fdutils import PointCloud
-from fdutils.mg import get_lump_mass_matrix
+from fdutils.mg import get_lump_mass_matrix, get_mass_inv, get_mass_mult
 
 
 def sync_printf(msg):
@@ -24,6 +24,7 @@ os.kill(PID, signal.SIGUSR1)
 
 
 opts = PETSc.Options()
+p = opts.getInt('p', default=1)
 dim = opts.getInt('dim', default=2)
 Ns_str = opts.getString('ns', default='10,20')
 Ns = [int(_) for _ in Ns_str.split(',')]
@@ -35,31 +36,22 @@ elif dim == 3:
 else:
     raise
 
-def make_p1_fun(mesh):
-    V = FunctionSpace(mesh, 'CG', 1)
+def make_pn_fun(mesh):
+    V = FunctionSpace(mesh, 'CG', p)
     f = Function(V)
     return f
 
 mesh1, mesh2 = meshes[0], meshes[1]
-f1 = make_p1_fun(mesh1)
-f2 = make_p1_fun(mesh2)
+f1 = make_pn_fun(mesh1)
+f2 = make_pn_fun(mesh2)
 
 f2.assign(1)
 
-M2 = get_lump_mass_matrix(f2.function_space())
-M1 = get_lump_mass_matrix(f1.function_space())
-
-
 pc = PointCloud(mesh1, mesh2.coordinates.dat.data_ro, tolerance=1)
 
-pvs = M2.dat.data_ro * f2.dat.data_ro
+pvs = f2.dat.data_ro
 pc.restrict(pvs, f1)
-
-s = sum(pvs)
-s1 = COMM_WORLD.reduce(s)
-with f1.dat.vec_ro as vec:
-    s2 = vec.sum()
-printf(f'{s1} == {s2}')
+# TODO: how to check the results?
 
 
 

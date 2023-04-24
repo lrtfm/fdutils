@@ -522,9 +522,9 @@ class PointCloud(object):
         with timed_region("PointValuesExchange"):
             self._perform_sparse_communication_round(recv_pvs, send_pvs)
 
-        dim = self.mesh.geometric_dimension()
+        ele = src.function_space().finat_element.fiat_equivalent
         mat = PETSc.Mat().createAIJ(size=((m, None), (n, None)),
-                      nnz=(dim+1, dim+1),
+                      nnz=(ele.space_dimension(), ele.space_dimension()),
                       bsize=1,
                       comm=self.mesh.comm)
         mat.setLGMap(rmap=rlgmap, cmap=clgmap)
@@ -536,6 +536,10 @@ class PointCloud(object):
         with timed_region("Restriction"):
             for r, cells in recv_cells_buffers.items():
                 X = Xs[r]
+                if len(X) == 0:
+                    continue
+                V_ref = ele.tabulate(0, X[:, 1:])
+                X = list(V_ref.values())[0].T
                 row = recv_pvs[r]
                 for _r, _X, _cell in zip(row, X, cells):
                     _c = g_cell_node_list[_cell]
@@ -578,12 +582,17 @@ class PointCloud(object):
             self._perform_sparse_communication_round(recv_pvs, send_pvs)
 
         recv_pvs[rank] = pvs[rank2cells[rank][0]]
+        ele = function.function_space().finat_element.fiat_equivalent
         cell_node_list = function.function_space().cell_node_list
         function.dat.data[:] = 0
         ret = np.zeros_like(function.dat.data_ro_with_halos)
         with timed_region("Restriction"):
             for r, cells in recv_cells_buffers.items():
                 X = Xs[r]
+                if len(X) == 0:
+                    continue
+                V_ref = ele.tabulate(0, X[:, 1:])
+                X = list(V_ref.values())[0].T
                 pv = recv_pvs[r]
                 if m == 1:
                     for _X, _p, _cell in zip(X, pv, cells):
