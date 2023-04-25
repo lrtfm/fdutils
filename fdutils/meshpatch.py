@@ -13,71 +13,10 @@ import firedrake.pointquery_utils as pointquery_utils
 
 __all__ = []
 
+
 def locate_cells(self, points, tolerance=None):
-    if self.variable_layers:
-        raise NotImplementedError("Cell location not implemented for variable layers")
-    points = np.asarray(points, dtype=ScalarType).reshape(-1, self.geometric_dimension())
-    if utils.complex_mode:
-        if not np.allclose(points.imag, 0):
-            raise ValueError("Provided points have non-zero imaginary part")
-        points = points.real.copy()
-    npoint, _ = points.shape
-    cells = np.empty(npoint, dtype=np.intc) # TODO: make the locator use IntType?
-    self._c_locators(tolerance=tolerance)(self.coordinates._ctypes,
-                                         points.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
-                                         npoint, # TODO: is this right?
-                                         cells.ctypes.data_as(ctypes.POINTER(ctypes.c_int)))
+    cells, Xs, ref_cell_dists_l1 = self.locate_cells_ref_coords_and_dists(points, tolerance)
     return cells
-
-def _c_locators(self, tolerance=None):
-    from pyop2 import compilation
-    from pyop2.utils import get_petsc_dir
-    import firedrake.function as function
-    import firedrake.pointquery_utils as pq_utils
-    import firedrake as fd
-
-    cache = self.__dict__.setdefault("_c_locators_cache", {})
-    try:
-        return cache[tolerance]
-    except KeyError:
-        src = pq_utils.src_locate_cell(self, tolerance=tolerance)
-        src += """
-// TODO: should output Xs?
-// void locator(struct Function *f, double *xs, int npoint, int *cells, double *Xs)
-void locator(struct Function *f, double *xs, int npoint, int *cells)
-{
-    /* The type definitions and arguments used here are defined as
-        statics in pointquery_utils.py */
-    struct ReferenceCoords temp_reference_coords, found_reference_coords;
-    int j;
-    int dim = %(geometric_dimension)d;
-    for (j = 0; j < npoint; j++) {
-        cells[j] = locate_cell(f, &xs[j*%(geometric_dimension)d], %(geometric_dimension)d,
-                           &to_reference_coords, &to_reference_coords_xtr,
-                           &temp_reference_coords, &found_reference_coords);
-        // if (cells[j] >= 0) {
-        //     for(int i=0; i<%(geometric_dimension)d; i++) {
-        //         Xs[j*dim + i] = found_reference_coords.X[i];
-        //     }
-        // }
-    }
-}
-""" % dict(geometric_dimension=self.geometric_dimension())
-
-        locator = compilation.load(src, "c", "locator",
-                                    cppargs=["-I%s" % p for p in fd.__path__]
-                                          + ["-I%s/include" % sys.prefix]
-                                          + ["-I%s/include" % d for d in get_petsc_dir()],
-                                    ldargs=["-L%s/lib" % sys.prefix,
-                                            "-lspatialindex_c",
-                                            "-Wl,-rpath,%s/lib" % sys.prefix])
-
-        locator.argtypes = [ctypes.POINTER(function._CFunction),
-                            ctypes.POINTER(ctypes.c_double),
-                            ctypes.c_int,
-                            ctypes.POINTER(ctypes.c_int)]
-        locator.restype = None
-        return cache.setdefault(tolerance, locator)
 
 
 @utils.cached_property
@@ -201,7 +140,7 @@ def processes_spatial_index(self):
 # pointquery_utils.src_locate_cell = meshpatch.src_locate_cell
 # MeshGeometry.locate_cell = meshpatch.locate_cell
 MeshGeometry.locate_cells = locate_cells
-MeshGeometry._c_locators = _c_locators
 MeshGeometry._inner_spatial_index = _inner_spatial_index
 MeshGeometry.spatial_index = spatial_index
 MeshGeometry.processes_spatial_index = processes_spatial_index
+MeshGeometry.clear_spatial_index = clear_spatial_index

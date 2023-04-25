@@ -553,7 +553,8 @@ def make_c_evaluate(function, c_name="evaluate_points", ldargs=None, tolerance=N
     from fdutils.pointeval_utils import compile_element
 
     mesh = function.ufl_domain()
-    src = [pq_utils.src_locate_cell(mesh, tolerance=tolerance)]
+    # NOTE: The tolerance here is not used, we set it to zero.
+    src = [pq_utils.src_locate_cell(mesh, tolerance=0.0)]
     src.append(compile_element(function, mesh.coordinates))
 
     args = []
