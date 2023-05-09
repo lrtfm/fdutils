@@ -154,3 +154,77 @@ class NonnestedTransferManager(object):
                 mat.multTranspose(src_vec, val_vec)
 
         return dest
+
+# patch mg for using galerkin
+import firedrake
+import firedrake.mg.ufl_utils as ufl_utils
+from firedrake.mg.ufl_utils import Injection, Interpolation
+
+
+def create_interpolation(dmc, dmf):
+
+    cctx = firedrake.dmhooks.get_appctx(dmc)
+    fctx = firedrake.dmhooks.get_appctx(dmf)
+
+    manager = firedrake.dmhooks.get_transfer_manager(dmf)
+
+    V_c = cctx._problem.u.function_space()
+    V_f = fctx._problem.u.function_space()
+
+    if isinstance(manager, NonnestedTransferManager):
+        f_c = Function(V_c)
+        f_f = Function(V_f)
+        mat = manager.get_interpolate_matrix(f_c, f_f)
+        return mat, None
+
+    row_size = V_f.dof_dset.layout_vec.getSizes()
+    col_size = V_c.dof_dset.layout_vec.getSizes()
+
+    cfn = firedrake.Function(V_c)
+    ffn = firedrake.Function(V_f)
+    cbcs = cctx._problem.bcs
+    fbcs = fctx._problem.bcs
+
+    ctx = Interpolation(cfn, ffn, manager, cbcs, fbcs)
+    mat = PETSc.Mat().create(comm=dmc.comm)
+    mat.setSizes((row_size, col_size))
+    mat.setType(mat.Type.PYTHON)
+    mat.setPythonContext(ctx)
+    mat.setUp()
+    return mat, None
+
+
+def create_injection(dmc, dmf):
+    cctx = firedrake.dmhooks.get_appctx(dmc)
+    fctx = firedrake.dmhooks.get_appctx(dmf)
+
+    manager = firedrake.dmhooks.get_transfer_manager(dmf)
+
+    V_c = cctx._problem.u.function_space()
+    V_f = fctx._problem.u.function_space()
+
+    if isinstance(manager, NonnestedTransferManager):
+        f_c = Function(V_c)
+        f_f = Function(V_f)
+        mat_int = manager.get_interpolate_matrix(f_c, f_f)
+        mat = PETSc.Mat().createTranspose(mat_int)
+        return mat
+
+    row_size = V_f.dof_dset.layout_vec.getSizes()
+    col_size = V_c.dof_dset.layout_vec.getSizes()
+
+    cfn = firedrake.Function(V_c)
+    ffn = firedrake.Function(V_f)
+    cbcs = cctx._problem.bcs
+
+    ctx = Injection(cfn, ffn, manager, cbcs)
+    mat = PETSc.Mat().create(comm=dmc.comm)
+    mat.setSizes((row_size, col_size))
+    mat.setType(mat.Type.PYTHON)
+    mat.setPythonContext(ctx)
+    mat.setUp()
+    return mat
+
+
+ufl_utils.create_injection = create_injection
+ufl_utils.create_interpolation = create_interpolation
