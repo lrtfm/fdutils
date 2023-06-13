@@ -226,5 +226,7 @@ def create_injection(dmc, dmf):
     return mat
 
 
-ufl_utils.create_injection = create_injection
-ufl_utils.create_interpolation = create_interpolation
+# # TODO: When using injection we should add boundry conditon
+# #       How to apply injection and bc within one matrix?
+# ufl_utils.create_injection = create_injection
+# ufl_utils.create_interpolation = create_interpolation
