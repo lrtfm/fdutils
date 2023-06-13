@@ -83,7 +83,3 @@ solver.solve()
 err = errornorm(u_exact, sol, 'H1')
 H1 = norm(u_exact, 'H1')
 printf(f'Error: {err} ({err/H1*100}%)')
-
-
-
-

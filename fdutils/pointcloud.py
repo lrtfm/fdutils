@@ -17,6 +17,7 @@ import logging
 from ctypes import POINTER, c_int, c_double, c_void_p
 c_petsc_int = np.ctypeslib.as_ctypes_type(IntType)
 
+from firedrake.mesh import MeshGeometry
 from firedrake.function import _CFunction, PointNotInDomainError
 import firedrake.utils as utils
 
@@ -97,7 +98,7 @@ class PointCloud(object):
         ```
     """
 
-    def __init__(self, mesh, points, tolerance=None, *args, **kwargs):
+    def __init__(self, mesh: MeshGeometry, points, tolerance=None, *args, **kwargs):
         """Initialise the PointCloud.
 
         :arg mesh: A mesh object.
@@ -112,7 +113,7 @@ class PointCloud(object):
         else:
             self.points = points
         syncPrint('[%d]'%mesh.comm.rank, points)
-        self.tolerance = tolerance if tolerance is not None else 1e-12
+        self.tolerance = tolerance if tolerance is not None else mesh.tolerance
         _, dim = points.shape
         if dim != mesh.geometric_dimension():
             raise ValueError("Points must be %d-dimensional, (got %d)" %

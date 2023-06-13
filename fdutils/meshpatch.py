@@ -14,8 +14,8 @@ import firedrake.pointquery_utils as pointquery_utils
 __all__ = []
 
 
-def locate_cells(self, points, tolerance=None):
-    cells, Xs, ref_cell_dists_l1 = self.locate_cells_ref_coords_and_dists(points, tolerance)
+def locate_cells(mesh: MeshGeometry, points, tolerance=None):
+    cells, Xs, ref_cell_dists_l1 = mesh.locate_cells_ref_coords_and_dists(points, tolerance)
     return cells
 
 
@@ -66,8 +66,7 @@ def _inner_spatial_index(self):
     par_loop((domain, instructions), ufl.dx,
              {'f': (coords, READ),
               'f_min': (coords_min, MIN),
-              'f_max': (coords_max, MAX)},
-             is_loopy_kernel=True)
+              'f_max': (coords_max, MAX)})
 
     # Reorder bounding boxes according to the cell indices we use
     column_list = V.cell_node_list.reshape(-1)
@@ -76,10 +75,10 @@ def _inner_spatial_index(self):
 
     # set mesh.bbox_relax_factor = 0.01 for high order mesh
     # should be done only when degree != 1 ?
-    bbox_relax_factor = getattr(self, 'bbox_relax_factor', 0.01)
-    distance = coords_max - coords_min
-    coords_min[:] -= bbox_relax_factor*distance
-    coords_max[:] += bbox_relax_factor*distance
+    if hasattr(self, "tolerance") and self.tolerance is not None:
+        coords_diff = coords_max - coords_min
+        coords_min -= self.tolerance*coords_diff
+        coords_max += self.tolerance*coords_diff
 
     # Build spatial index
     spatial_index = spatialindex.from_regions(coords_min, coords_max)
