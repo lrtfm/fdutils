@@ -168,7 +168,7 @@ static inline void wrap_evaluate(%(scalar_type)s* const result, %(scalar_type)s*
         cell = cells[i];
         cell_dist_l1 = to_reference_coords(&reference_coords, f, cell, &xs[i*%(geometric_dimension)d]);
 #endif
-        if (cell_dist_l1 < 1e-12) { s++; } // TODO: should add this?
+        if (cell_dist_l1 < tolerance) { s++; } // TODO: this seems unnecessary.
         if (results) {
             wrap_evaluate(&results[i*%(num_per_node)d], reference_coords.X, cell, cell+1%(layers)s, f->coords, f->f, %(map_args)s);
         }

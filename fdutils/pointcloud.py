@@ -104,7 +104,10 @@ class PointCloud(object):
         :arg mesh: A mesh object.
         :arg points: An N x mesh.geometric_dimension() array of point locations.
         """
-        self.mesh = mesh
+        gdim =  mesh.geometric_dimension()
+        if points is None or len(points) == 0:
+            points = np.zeros((0, gdim))
+
         points = np.asarray(points, dtype=ScalarType)
         if utils.complex_mode:
             if not np.allclose(points.imag, 0):
@@ -113,12 +116,17 @@ class PointCloud(object):
         else:
             self.points = points
         syncPrint('[%d]'%mesh.comm.rank, points)
-        self.tolerance = tolerance if tolerance is not None else mesh.tolerance
+
+        # NOTE: we do not have voting algorithms to determine which cell is the
+        #       best one so we make the tolerance small enough. For functions
+        #       in space of continue element, this is OK. This can be larger.
+        self.tolerance = tolerance if tolerance is not None else 1e-12
         _, dim = points.shape
-        if dim != mesh.geometric_dimension():
+        if dim != gdim:
             raise ValueError("Points must be %d-dimensional, (got %d)" %
                              (mesh.geometric_dimension(), dim))
 
+        self.mesh: MeshGeometry = mesh
         # Initialise dictionary to store location statistics for evaluation.
         self.statistics = OrderedDict()
         # Initialise counters.
@@ -689,8 +697,9 @@ def make_c_evaluate(function, c_name="evaluate_points", ldargs=None, tolerance=N
     from fdutils.pointeval_utils import compile_element
 
     mesh = function.ufl_domain()
-    # NOTE: The tolerance here is not used, we set it to zero.
-    src = [pq_utils.src_locate_cell(mesh, tolerance=0.0)]
+    # NOTE: The tolerance is a global var, which will be used in
+    #       compile_element.
+    src = [pq_utils.src_locate_cell(mesh, tolerance=tolerance)]
     src.append(compile_element(function, mesh.coordinates))
 
     args = []
