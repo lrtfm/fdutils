@@ -53,20 +53,58 @@ def _inner_spatial_index(self):
     else:
         coords = self.coordinates
 
-    cell_node_list = self.coordinates.function_space().cell_node_list
-    _, nodes_per_cell = cell_node_list.shape
+    tdim = self.ufl_cell().topological_dimension()
+    if gdim == tdim:
+        cell_node_list = self.coordinates.function_space().cell_node_list
+        _, nodes_per_cell = cell_node_list.shape
 
-    domain = "{{[d, i]: 0 <= d < {0} and 0 <= i < {1}}}".format(gdim, nodes_per_cell)
-    instructions = """
-    for d, i
-        f_min[0, d] = fmin(f_min[0, d], f[i, d])
-        f_max[0, d] = fmax(f_max[0, d], f[i, d])
-    end
-    """
-    par_loop((domain, instructions), ufl.dx,
-             {'f': (coords, READ),
-              'f_min': (coords_min, MIN),
-              'f_max': (coords_max, MAX)})
+        domain = "{{[d, i]: 0 <= d < {0} and 0 <= i < {1}}}".format(gdim, nodes_per_cell)
+        instructions = """
+        for d, i
+            f_min[0, d] = fmin(f_min[0, d], f[i, d])
+            f_max[0, d] = fmax(f_max[0, d], f[i, d])
+        end
+        """
+        par_loop((domain, instructions), ufl.dx,
+                {'f': (coords, READ),
+                'f_min': (coords_min, MIN),
+                'f_max': (coords_max, MAX)})
+    else:
+        # consider the normal direction for manifold
+        from firedrake import CellNormal, CellVolume, CellSize, sqrt
+        degree = self.coordinates.function_space().ufl_element().degree()
+        V_normal = functionspace.VectorFunctionSpace(self, 'CG', degree)
+        normal = function.Function(V_normal, dtype=RealType)
+        normal.interpolate(CellNormal(self))
+
+        if degree > 1:
+            V_size = functionspace.FunctionSpace(self, 'DG', 0)
+            size = function.Function(V_size, dtype=RealType)
+            size.interpolate(CellVolume(self))
+            size.assign(sqrt(2*size))   # only for surface, it is ok for now
+        else:
+            # V_size = functionspace.FunctionSpace(self, 'DG', 0)
+            # size = function.Function(V_size, dtype=RealType)
+            # size.interpolate(CellSize(self))
+            size = self.cell_sizes
+
+        cell_node_list = self.coordinates.function_space().cell_node_list
+        _, nodes_per_cell = cell_node_list.shape
+
+        domain = "{{[d, i]: 0 <= d < {0} and 0 <= i < {1}}}".format(gdim, nodes_per_cell)
+        instructions = """
+        for d, i
+            <> dist = h[0, 0]*n[i, d]/3.0
+            f_min[0, d] = fmin(fmin(f_min[0, d], f[i, d] + dist), f[i, d] - dist)
+            f_max[0, d] = fmax(fmax(f_max[0, d], f[i, d] + dist), f[i, d] - dist)
+        end
+        """
+        par_loop((domain, instructions), ufl.dx,
+                {'f': (coords, READ),
+                'n': (normal, READ),
+                'h': (size, READ),
+                'f_min': (coords_min, MIN),
+                'f_max': (coords_max, MAX)})
 
     # Reorder bounding boxes according to the cell indices we use
     column_list = V.cell_node_list.reshape(-1)
