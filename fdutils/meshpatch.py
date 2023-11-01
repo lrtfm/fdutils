@@ -82,6 +82,8 @@ def _inner_spatial_index(self):
             size = function.Function(V_size, dtype=RealType)
             size.interpolate(CellVolume(self))
             size.assign(sqrt(2*size))   # only for surface, it is ok for now
+            # only for surface, it's ok for now
+            size.dat.data_with_halos[:] = np.sqrt(2*size.dat.data_ro_with_halos[:])
         else:
             # V_size = functionspace.FunctionSpace(self, 'DG', 0)
             # size = function.Function(V_size, dtype=RealType)
