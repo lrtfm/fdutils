@@ -48,7 +48,7 @@ def get_nodes_coords(fun):
     eles = [element]
     while len(eles):
         ele = eles.pop(0)
-        sub = ele.sub_elements()
+        sub = ele.sub_elements
         if len(sub) > 0:
             eles += sub
         else:

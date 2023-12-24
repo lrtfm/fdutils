@@ -5,7 +5,7 @@ from firedrake import Function, FunctionSpace, \
                       dx, inner, dot, \
                       assemble
 from firedrake.petsc import PETSc
-from ufl import FiniteElement, TensorProductElement
+from finat.ufl import FiniteElement, TensorProductElement
 import numpy as np
 
 
