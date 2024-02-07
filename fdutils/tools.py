@@ -57,7 +57,7 @@ def get_nodes_coords(fun):
                 raise Exception(f'Do not support element type: {ele}')
 
     if element.family() == 'TensorProductElement':
-        cells = element.cell().sub_cells()
+        cells = element.cell.sub_cells()
         assert len(degree) == 2
         if degree[0] == 1 and degree[1] == 1 and degree_coord == 1:
             points = mesh.coordinates.dat.data_ro.copy()

@@ -22,7 +22,7 @@ def isnotebook():
         return False      # Probably standard Python interpreter
 
 
-class ptqdm:
+class ptqdm(tqdm):
     """A parallel wraper of tqdm (progressbar)"""
     
     __config__ = {'ncols': None if isnotebook() else 80, 'ascii': True}
@@ -36,16 +36,8 @@ class ptqdm:
         for key, val in ptqdm.__config__.items():
             if key not in kwargs.keys():
                 kwargs[key] = val
+
+        if self.rank != 0:
+            kwargs['disable'] = True
         
-        self.tqdm = tqdm(*args, **kwargs) if self.rank == 0 else None
-    
-    def update(self):
-        if self.tqdm is not None:
-            self.tqdm.update()
-            
-    def close(self):
-        if self.tqdm is not None:
-            self.tqdm.close()
-        
-    def __getattr__(self, attr):
-        return self.tqdm.__get_attr__(attr)
+        super(ptqdm, self).__init__(*args, **kwargs)
