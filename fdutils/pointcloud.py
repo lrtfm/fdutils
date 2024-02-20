@@ -3,6 +3,9 @@ from collections import OrderedDict
 import os
 import sys
 import numpy as np
+import rtree
+from textwrap import dedent
+from pathlib import Path
 
 from firedrake.mesh import spatialindex
 # from firedrake.dmplex import build_two_sided
@@ -723,10 +726,20 @@ def make_c_evaluate(function, c_name="evaluate_points", ldargs=None, tolerance=N
 
     if ldargs is None:
         ldargs = []
-    ldargs += ["-L%s/lib" % sys.prefix, "-lspatialindex_c", "-Wl,-rpath,%s/lib" % sys.prefix]
-    return compilation.load(src, "c", c_name,
-                            cppargs= ["-I%s" % p for p in fd.__path__]
-                            + ["-I%s/include" % sys.prefix]
-                            + ["-I%s/include" % d for d in get_petsc_dir()],
-                            ldargs=ldargs,
-                            comm=function.comm)
+
+    libspatialindex_so = Path(rtree.core.rt._name).absolute()
+    lsi_runpath = f"-Wl,-rpath,{libspatialindex_so.parent}"
+    ldargs += [f"-L{sys.prefix}/lib", str(libspatialindex_so), lsi_runpath]
+    return compilation.load(
+        src, "c", c_name,
+        cppargs= [
+            f"-I{p}" for p in fd.__path__
+        ] + [
+            f"-I{sys.prefix}/include",
+            f"-I{rtree.finder.get_include()}"
+        ] + [
+            f"-I{d}/include" for d in get_petsc_dir()
+        ],
+        ldargs=ldargs,
+        comm=function.comm
+    )
