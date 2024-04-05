@@ -684,7 +684,8 @@ def make_c_evaluate(function, c_name="evaluate_points", ldargs=None, tolerance=N
     r"""Generates, compiles and loads a C function to evaluate the
     given Firedrake :class:`Function` and return the area coordiantes."""
 
-    from os import path
+    import rtree
+    from pathlib import Path
 
     from pyop2 import compilation, op2
     from pyop2.utils import get_petsc_dir
@@ -723,10 +724,20 @@ def make_c_evaluate(function, c_name="evaluate_points", ldargs=None, tolerance=N
 
     if ldargs is None:
         ldargs = []
-    ldargs += ["-L%s/lib" % sys.prefix, "-lspatialindex_c", "-Wl,-rpath,%s/lib" % sys.prefix]
-    return compilation.load(src, "c", c_name,
-                            cppargs= ["-I%s" % p for p in fd.__path__]
-                            + ["-I%s/include" % sys.prefix]
-                            + ["-I%s/include" % d for d in get_petsc_dir()],
-                            ldargs=ldargs,
-                            comm=function.comm)
+    libspatialindex_so = Path(rtree.core.rt._name).absolute()
+    lsi_runpath = f"-Wl,-rpath,{libspatialindex_so.parent}"
+    return compilation.load(
+        src, "c", c_name,
+        cppargs= [
+            *[f"-I{p}" for p in fd.__path__],
+            f"-I{sys.prefix}/include",
+            f"-I{rtree.finder.get_include()}",
+            *[f"-I{d}/include" for d in get_petsc_dir()]
+        ],
+        ldargs=ldargs + [
+            f"-L{sys.prefix}/lib",
+            str(libspatialindex_so),
+            f"-Wl,-rpath,{sys.prefix}/lib",
+            lsi_runpath
+        ],
+        comm=function.comm)
