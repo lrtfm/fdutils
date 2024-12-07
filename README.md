@@ -1,5 +1,9 @@
 # Utils for Firedrake
 
+__WARNING__:
+1. This does not work when using Firedrake after [PR #3293](https://github.com/firedrakeproject/firedrake/pull/3293) (merged on 31/10/2024).
+2. The `interpolate` function in Firedrake can interpolate a function to a `FunctionSpace` on a different mesh.
+
 ## Requirements 
 1. Firedrake: https://github.com/firedrakeproject/firedrake 
 2. tqdm: https://pypi.org/project/tqdm 
